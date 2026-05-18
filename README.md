@@ -1,8 +1,15 @@
 # Movie DB JSON V2
 
-A cinematic PHP movie and TV database powered by the TMDB API, clean Apache routes, and local JSON storage. No SQL database is required: movies, TV shows, actors, seasons, episodes, and indexes are saved into JSON shard files with a maximum of 100 records per file.
+A cinematic PHP movie and TV database powered by the TMDB API, clean Apache routes, and local JSON storage. No SQL database is required: movies, TV shows, actors, seasons, episodes, and indexes are saved into JSON shard files with a maximum of 100 records per file. The more you browse, search, and open pages, the more content becomes available locally.
 
 > Attribution: This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+
+## Demo
+
+Live demo: https://mdb.gingerdev.host/
+
+The more you browse, search, and open pages, the more becomes available. The app prefetches visible TMDB results and upgrades records when details are viewed, so the local JSON library grows naturally during normal use.
 
 ## Current V2 features
 
@@ -103,6 +110,8 @@ The app uses TMDB to keep local JSON data populated automatically.
 - Opening a detail page upgrades a prefetched record with full metadata, cast, ratings, seasons, external IDs, and related data.
 
 This gives quick local browsing without attempting to crawl the entire TMDB catalogue in one request.
+
+In other words: the more you browse, the more becomes available in your local JSON-powered library.
 
 
 ## Duplicate titles and clean URLs
