@@ -1,0 +1,22 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers;
+
+use App\Core\View;
+
+final class ProfileController
+{
+    public function index(): string
+    {
+        return View::render('pages/profile', [
+            'title' => 'My Profile',
+            'metaDescription' => 'View your local continue watching list, bookmarks, and recently viewed movies and TV shows.',
+            'ogTitle' => 'My Profile | Movie DB',
+            'ogDescription' => 'Your local Movie DB profile with continue watching, bookmarks, and recently viewed items.',
+            'canonicalUrl' => absolute_url('profile'),
+            'robots' => 'noindex, follow',
+        ]);
+    }
+}
