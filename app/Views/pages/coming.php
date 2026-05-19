@@ -1,5 +1,13 @@
 <?php require_once app_path('app/Helpers/helpers.php'); ?>
-<section class="coming-hero glass rounded-4 overflow-hidden mb-4">
+<?php
+  $comingBackdropPool = array_values(array_filter(array_merge($movies ?? [], $tvShows ?? []), static function (array $item): bool {
+      return !empty($item['backdrop_path']) || !empty($item['poster_path']);
+  }));
+  $comingHeroItem = $comingBackdropPool ? $comingBackdropPool[array_rand($comingBackdropPool)] : null;
+  $comingHeroBackdrop = $comingHeroItem ? tmdb_img($comingHeroItem['backdrop_path'] ?? ($comingHeroItem['poster_path'] ?? null), !empty($comingHeroItem['backdrop_path']) ? 'w1280' : 'w780') : '';
+?>
+<section class="coming-hero glass rounded-4 overflow-hidden mb-4<?= $comingHeroBackdrop !== '' ? ' has-backdrop' : '' ?>"<?= $comingHeroBackdrop !== '' ? ' style="--coming-hero-bg:url(' . e($comingHeroBackdrop) . ')"' : '' ?>>
+  <?php if ($comingHeroBackdrop !== ''): ?><div class="coming-hero-backdrop" aria-hidden="true"></div><?php endif; ?>
   <div class="coming-hero-glow"></div>
   <div class="coming-hero-inner">
     <span class="v2-kicker"><i class="fa-solid fa-calendar-days"></i> Coming this year</span>

@@ -14,21 +14,65 @@
   </div>
 </section>
 
-
-<section class="profile-section mb-5" data-profile-section="bookmarks">
-  <div class="v2-section-head compact">
-    <div><span class="v2-section-eyebrow"><i class="fa-solid fa-bookmark"></i> Saved for later</span><h2>Bookmarks</h2></div>
-    <button class="btn btn-sm btn-outline-light js-profile-clear" type="button" data-clear="bookmarks">Clear</button>
+<section class="actor-credits-shell profile-tabs-shell glass rounded-4 p-3 p-lg-4 mb-4" data-profile-section="bookmarks">
+  <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
+    <div>
+      <span class="v2-section-eyebrow"><i class="fa-solid fa-bookmark"></i> Saved for later</span>
+      <h2 class="mb-0 text-white fw-black">Bookmarks</h2>
+    </div>
+    <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
+      <div class="actor-tabs profile-tabs" role="tablist" aria-label="Bookmark tabs">
+        <button class="actor-tab profile-filter-tab active" type="button" data-profile-kind="bookmarks" data-profile-type="movie" aria-selected="true"><i class="fa-solid fa-film"></i> Movies <span data-profile-type-count="bookmarks:movie">0</span></button>
+        <button class="actor-tab profile-filter-tab" type="button" data-profile-kind="bookmarks" data-profile-type="tv" aria-selected="false"><i class="fa-solid fa-tv"></i> TV Shows <span data-profile-type-count="bookmarks:tv">0</span></button>
+      </div>
+      <button class="btn btn-sm btn-outline-light js-profile-clear" type="button" data-clear="bookmarks">Clear</button>
+    </div>
   </div>
-  <div class="profile-grid" data-profile-grid="bookmarks"></div>
-  <div class="profile-empty glass rounded-4 p-4" data-profile-empty="bookmarks">Tap the bookmark icon on any poster card to save it here.</div>
+
+  <div class="profile-list-panel active" data-profile-panel="bookmarks:movie">
+    <div class="profile-grid" data-profile-grid="bookmarks:movie" data-per-page="12"></div>
+    <div class="profile-empty glass rounded-4 p-4" data-profile-empty="bookmarks:movie">Tap the bookmark icon on a movie to save it here.</div>
+    <div class="profile-pagination mt-4" data-profile-pagination="bookmarks:movie"></div>
+  </div>
+
+  <div class="profile-list-panel" data-profile-panel="bookmarks:tv">
+    <div class="profile-grid" data-profile-grid="bookmarks:tv" data-per-page="12"></div>
+    <div class="profile-empty glass rounded-4 p-4" data-profile-empty="bookmarks:tv">Tap the bookmark icon on a TV show or episode to save it here.</div>
+    <div class="profile-pagination mt-4" data-profile-pagination="bookmarks:tv"></div>
+  </div>
 </section>
 
-<section class="profile-section" data-profile-section="recent">
-  <div class="v2-section-head compact">
-    <div><span class="v2-section-eyebrow"><i class="fa-solid fa-clock-rotate-left"></i> Recently opened</span><h2>Recently Viewed</h2></div>
-    <button class="btn btn-sm btn-outline-light js-profile-clear" type="button" data-clear="recent">Clear</button>
+<section class="actor-credits-shell profile-tabs-shell glass rounded-4 p-3 p-lg-4 mb-5" data-profile-section="recent">
+  <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
+    <div>
+      <span class="v2-section-eyebrow"><i class="fa-solid fa-clock-rotate-left"></i> Recently opened</span>
+      <h2 class="mb-0 text-white fw-black">Recently Viewed</h2>
+    </div>
+    <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
+      <div class="actor-tabs profile-tabs" role="tablist" aria-label="Recently viewed tabs">
+        <button class="actor-tab profile-filter-tab active" type="button" data-profile-kind="recent" data-profile-type="movie" aria-selected="true"><i class="fa-solid fa-film"></i> Movies <span data-profile-type-count="recent:movie">0</span></button>
+        <button class="actor-tab profile-filter-tab" type="button" data-profile-kind="recent" data-profile-type="tv" aria-selected="false"><i class="fa-solid fa-tv"></i> TV Shows <span data-profile-type-count="recent:tv">0</span></button>
+        <button class="actor-tab profile-filter-tab" type="button" data-profile-kind="recent" data-profile-type="person" aria-selected="false"><i class="fa-solid fa-user-group"></i> Actors <span data-profile-type-count="recent:person">0</span></button>
+      </div>
+      <button class="btn btn-sm btn-outline-light js-profile-clear" type="button" data-clear="recent">Clear</button>
+    </div>
   </div>
-  <div class="profile-grid" data-profile-grid="recent"></div>
-  <div class="profile-empty glass rounded-4 p-4" data-profile-empty="recent">Movies, shows and episodes you open will show up here.</div>
+
+  <div class="profile-list-panel active" data-profile-panel="recent:movie">
+    <div class="profile-grid" data-profile-grid="recent:movie" data-per-page="12"></div>
+    <div class="profile-empty glass rounded-4 p-4" data-profile-empty="recent:movie">Movies you open will show up here.</div>
+    <div class="profile-pagination mt-4" data-profile-pagination="recent:movie"></div>
+  </div>
+
+  <div class="profile-list-panel" data-profile-panel="recent:tv">
+    <div class="profile-grid" data-profile-grid="recent:tv" data-per-page="12"></div>
+    <div class="profile-empty glass rounded-4 p-4" data-profile-empty="recent:tv">TV shows, seasons and episodes you open will show up here.</div>
+    <div class="profile-pagination mt-4" data-profile-pagination="recent:tv"></div>
+  </div>
+
+  <div class="profile-list-panel" data-profile-panel="recent:person">
+    <div class="profile-grid" data-profile-grid="recent:person" data-per-page="12"></div>
+    <div class="profile-empty glass rounded-4 p-4" data-profile-empty="recent:person">Actors you open will show up here.</div>
+    <div class="profile-pagination mt-4" data-profile-pagination="recent:person"></div>
+  </div>
 </section>

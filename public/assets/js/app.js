@@ -257,19 +257,110 @@ document.documentElement.classList.add('js-ready');
     </article>`;
   };
 
+  const profileBucket = (item) => {
+    const type = String(item && item.type ? item.type : '').toLowerCase();
+    if (type === 'person' || type === 'actor') return 'person';
+    if (type === 'tv' || type === 'episode' || type === 'season') return 'tv';
+    return 'movie';
+  };
+
+  const profileLabel = (bucket) => bucket === 'person' ? 'Actors' : (bucket === 'tv' ? 'TV Shows' : 'Movies');
+  const profilePageState = {};
+
+  const filteredProfileItems = (section, bucket) => read(section).filter((item) => profileBucket(item) === bucket);
+
+  const renderProfilePager = (section, bucket, current, pages, total, start, end) => {
+    const footer = document.querySelector(`[data-profile-pagination="${section}:${bucket}"]`);
+    if (!footer) return;
+    if (pages <= 1) {
+      footer.innerHTML = '';
+      return;
+    }
+    const visibleFrom = start + 1;
+    const visibleTo = Math.min(total, end);
+    footer.innerHTML = `<div class="actor-pager-bar profile-pager-bar">
+      <div class="pager-showing"><span>Showing</span><strong>${visibleFrom}${visibleTo !== visibleFrom ? '&ndash;' + visibleTo : ''}</strong><span>of</span><strong>${total}</strong><span>${escapeHtml(profileLabel(bucket))}</span></div>
+      <div class="actor-pager-actions profile-pager-actions">
+        ${current > 1 ? `<button type="button" class="actor-page-btn profile-page-btn" data-profile-page="${section}:${bucket}" data-page="${current - 1}" aria-label="Previous page"><i class="fa-solid fa-angle-left"></i></button>` : ''}
+        <span class="actor-page-current">Page <strong>${current}</strong> of ${pages}</span>
+        ${current < pages ? `<button type="button" class="actor-page-btn profile-page-btn" data-profile-page="${section}:${bucket}" data-page="${current + 1}" aria-label="Next page"><i class="fa-solid fa-angle-right"></i></button>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const renderProfilePanel = (section, bucket, page = null) => {
+    const key = `${section}:${bucket}`;
+    const grid = document.querySelector(`[data-profile-grid="${key}"]`);
+    const empty = document.querySelector(`[data-profile-empty="${key}"]`);
+    if (!grid) return;
+
+    const perPage = parseInt(grid.dataset.perPage || '12', 10) || 12;
+    const items = filteredProfileItems(section, bucket);
+    const pages = Math.max(1, Math.ceil(items.length / perPage));
+    const current = Math.min(Math.max(1, page || profilePageState[key] || 1), pages);
+    profilePageState[key] = current;
+    const start = (current - 1) * perPage;
+    const end = start + perPage;
+
+    grid.classList.add('is-profile-loading');
+    window.setTimeout(() => {
+      grid.innerHTML = items.slice(start, end).map((item) => renderCard(item, section)).join('');
+      grid.classList.remove('is-profile-loading');
+      if (empty) empty.classList.toggle('d-none', items.length > 0);
+      renderProfilePager(section, bucket, current, pages, items.length, start, end);
+    }, 70);
+  };
+
+  const activeProfileBucket = (section) => {
+    const active = document.querySelector(`.profile-filter-tab.active[data-profile-kind="${section}"]`);
+    return active?.dataset?.profileType || 'movie';
+  };
+
   function renderProfile() {
     const root = document.querySelector('[data-profile-section]');
     if (!root) return;
+
     ['bookmarks', 'recent'].forEach((section) => {
       const items = read(section);
-      const grid = document.querySelector(`[data-profile-grid="${section}"]`);
-      const empty = document.querySelector(`[data-profile-empty="${section}"]`);
-      const count = document.querySelector(`[data-profile-count="${section}"]`);
-      if (count) count.textContent = String(items.length);
-      if (grid) grid.innerHTML = items.slice(0, section === 'bookmarks' ? 30 : 18).map((item) => renderCard(item, section)).join('');
-      if (empty) empty.classList.toggle('d-none', items.length > 0);
+      document.querySelectorAll(`[data-profile-count="${section}"]`).forEach((count) => { count.textContent = String(items.length); });
+      ['movie', 'tv', 'person'].forEach((bucket) => {
+        const count = filteredProfileItems(section, bucket).length;
+        document.querySelectorAll(`[data-profile-type-count="${section}:${bucket}"]`).forEach((node) => { node.textContent = String(count); });
+      });
+      ['movie', 'tv', 'person'].forEach((bucket) => renderProfilePanel(section, bucket));
     });
   }
+
+  document.addEventListener('click', (event) => {
+    const tab = event.target.closest('.profile-filter-tab[data-profile-kind][data-profile-type]');
+    if (!tab) return;
+    const section = tab.dataset.profileKind || 'bookmarks';
+    const bucket = tab.dataset.profileType || 'movie';
+    document.querySelectorAll(`.profile-filter-tab[data-profile-kind="${section}"]`).forEach((button) => {
+      const active = button.dataset.profileType === bucket;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    document.querySelectorAll(`[data-profile-panel^="${section}:"]`).forEach((panel) => {
+      const active = panel.dataset.profilePanel === `${section}:${bucket}`;
+      panel.classList.toggle('active', active);
+      panel.style.display = active ? '' : 'none';
+    });
+    profilePageState[`${section}:${bucket}`] = profilePageState[`${section}:${bucket}`] || 1;
+    renderProfilePanel(section, bucket, profilePageState[`${section}:${bucket}`]);
+  });
+
+  document.addEventListener('click', (event) => {
+    const pager = event.target.closest('.profile-page-btn[data-profile-page][data-page]');
+    if (!pager) return;
+    const [section, bucket] = String(pager.dataset.profilePage || 'bookmarks:movie').split(':');
+    const page = parseInt(pager.dataset.page || '1', 10) || 1;
+    renderProfilePanel(section, bucket, page);
+    const panel = document.querySelector(`[data-profile-panel="${section}:${bucket}"]`);
+    if (panel && window.jQuery) {
+      window.jQuery('html, body').animate({ scrollTop: Math.max(0, window.jQuery(panel).offset().top - 120) }, 220);
+    }
+  });
 
   document.addEventListener('click', (event) => {
     const clear = event.target.closest('.js-profile-clear[data-clear]');
@@ -757,3 +848,46 @@ document.documentElement.classList.add('js-ready');
     if (event.key === 'Escape' && $backdrop.hasClass('is-open')) closeShare();
   });
 })(window.jQuery);
+
+
+/* Home hero Splide carousel */
+(function () {
+  if (typeof window.Splide === 'undefined') return;
+
+  const hero = document.querySelector('.js-home-hero-splide');
+  if (!hero) return;
+
+  const shell = hero.closest('.v2-home-hero-carousel');
+  const backdrop = shell ? shell.querySelector('.v2-home-hero-backdrop') : null;
+
+  const updateBackdrop = function (splide) {
+    const slide = splide.Components.Slides.getAt(splide.index);
+    const node = slide && slide.slide ? slide.slide.querySelector('.v2-home-hero-slide') : null;
+    const image = node ? node.getAttribute('data-hero-backdrop') : '';
+    if (backdrop && image) backdrop.style.backgroundImage = "url('" + image.replace(/'/g, "%27") + "')";
+  };
+
+  const splide = new Splide(hero, {
+    type: 'loop',
+    perPage: 1,
+    perMove: 1,
+    gap: '1rem',
+    speed: 650,
+    interval: 6500,
+    autoplay: true,
+    pauseOnHover: true,
+    pauseOnFocus: true,
+    arrows: true,
+    pagination: true,
+    keyboard: true,
+    drag: true,
+    reducedMotion: {
+      speed: 0,
+      rewindSpeed: 0,
+      autoplay: 'pause'
+    }
+  });
+
+  splide.on('mounted move moved', function () { updateBackdrop(splide); });
+  splide.mount();
+})();

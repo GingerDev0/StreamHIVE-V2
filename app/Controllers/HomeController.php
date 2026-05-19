@@ -37,13 +37,35 @@ final class HomeController
         $tvRecent = $this->hydrateFromLocal($tvRecent, 'tv', $repo);
         $tvTrending = $this->hydrateFromLocal($tvTrending, 'tv', $repo);
 
-        return View::render('pages/home', compact('moviesRecent','moviesTrending','tvRecent','tvTrending') + [
+        $heroMovies = $this->randomMoviesForHero($moviesTrending, $moviesRecent);
+
+        return View::render('pages/home', compact('moviesRecent','moviesTrending','tvRecent','tvTrending','heroMovies') + [
             'title' => 'Movie DB V2',
             'metaDescription' => 'Explore trending movies and TV shows with posters, cast, episodes, ratings, genres, bookmarks, and instant playback.',
             'ogTitle' => 'Movie DB V2 | Trending Movies and TV Shows',
             'ogDescription' => 'Discover trending movies and TV shows in a bold cinematic interface.',
             'canonicalUrl' => absolute_url('/'),
         ]);
+    }
+
+    private function randomMoviesForHero(array ...$groups): array
+    {
+        $seen = [];
+        $movies = [];
+
+        foreach ($groups as $group) {
+            foreach ($group as $item) {
+                $id = (int)($item['tmdb_id'] ?? $item['id'] ?? 0);
+                if ($id <= 0 || isset($seen[$id])) continue;
+                if (empty($item['poster_path'])) continue;
+                $seen[$id] = true;
+                $item['media_type'] = 'movie';
+                $movies[] = $item;
+            }
+        }
+
+        shuffle($movies);
+        return array_slice($movies, 0, 10);
     }
 
     private function hydrateFromLocal(array $items, string $type, Repository $repo): array

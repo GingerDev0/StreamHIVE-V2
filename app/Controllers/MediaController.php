@@ -487,15 +487,17 @@ final class MediaController
     private function comingItems(array $items, string $type, int $year): array
     {
         $today = new \DateTimeImmutable('today');
+        $start = max($today->modify('+1 day'), new \DateTimeImmutable(sprintf('%d-01-01', $year)));
         $end = new \DateTimeImmutable(sprintf('%d-12-31', $year));
 
-        $items = array_values(array_filter($items, static function (array $item) use ($type, $today, $end): bool {
+        $items = array_values(array_filter($items, static function (array $item) use ($type, $year, $start, $end): bool {
             if (($item['media_type'] ?? $type) !== $type) return false;
             $date = media_release_date($item);
-            if ($date === '') return false;
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return false;
+            if ((int)substr($date, 0, 4) !== $year) return false;
             $dt = \DateTimeImmutable::createFromFormat('!Y-m-d', $date);
             if (!$dt) return false;
-            return $dt > $today && $dt <= $end;
+            return $dt >= $start && $dt <= $end;
         }));
 
         usort($items, static function (array $a, array $b): int {
