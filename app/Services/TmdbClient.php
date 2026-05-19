@@ -22,6 +22,7 @@ final class TmdbClient
     public function searchTv(string $query, int $page = 1): array { return $this->get('/search/tv', ['query' => $query, 'include_adult' => 'false', 'page' => max(1, $page)]); }
     public function searchPerson(string $query, int $page = 1): array { return $this->get('/search/person', ['query' => $query, 'include_adult' => 'false', 'page' => max(1, $page)]); }
     public function movie(int $id): array { return $this->get("/movie/{$id}", ['append_to_response' => 'credits,external_ids,videos,images,release_dates']); }
+    public function collection(int $id): array { return $this->get("/collection/{$id}"); }
     public function tv(int $id): array { return $this->get("/tv/{$id}", ['append_to_response' => 'credits,external_ids,videos,images,content_ratings']); }
     public function person(int $id): array { return $this->get("/person/{$id}", ['append_to_response' => 'combined_credits,external_ids']); }
     public function season(int $seriesId, int $season): array { return $this->get("/tv/{$seriesId}/season/{$season}"); }

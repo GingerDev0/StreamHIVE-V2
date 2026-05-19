@@ -115,8 +115,12 @@ function is_future_date(?string $date): bool {
     $today = new DateTimeImmutable('today');
     return $dt > $today;
 }
+function has_release_date(array $item): bool {
+    return media_release_date($item) !== '';
+}
 function is_released_media(array $item): bool {
-    return !is_future_date(media_release_date($item));
+    $date = media_release_date($item);
+    return $date !== '' && !is_future_date($date);
 }
 
 function format_date(?string $date): string {

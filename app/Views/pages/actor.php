@@ -13,8 +13,8 @@ $sortNewToOld = static function (array $a, array $b) use ($creditDate): int {
 };
 
 usort($credits, $sortNewToOld);
-$productionCredits = array_values(array_filter($credits, static fn(array $credit): bool => is_future_date(media_release_date($credit))));
-$releasedCredits = array_values(array_filter($credits, static fn(array $credit): bool => !is_future_date(media_release_date($credit))));
+$productionCredits = array_values(array_filter($credits, static fn(array $credit): bool => media_release_date($credit) !== '' && is_future_date(media_release_date($credit))));
+$releasedCredits = array_values(array_filter($credits, static fn(array $credit): bool => is_released_media($credit))); 
 $movieCredits = array_values(array_filter($releasedCredits, static fn(array $credit): bool => ($credit['media_type'] ?? 'movie') === 'movie'));
 $tvCredits = array_values(array_filter($releasedCredits, static fn(array $credit): bool => ($credit['media_type'] ?? '') === 'tv'));
 $birthday = format_date($actor['birthday'] ?? null);

@@ -33,8 +33,12 @@
   </div>
 </section>
 
+
+<?php $collectionMovies = $collectionMovies ?? []; require app_path('app/Views/partials/collection-carousel.php'); ?>
+
 <div class="row g-4 mt-4 align-items-start">
   <section class="col-lg-8">
+
     <div class="v2-section-head compact"><div><span class="v2-section-eyebrow"><i class="fa-solid fa-users"></i> Talent</span><h2>Cast</h2></div></div>
     <div class="row g-3">
     <?php foreach (($item['cast'] ?? []) as $actor): ?>

@@ -66,7 +66,6 @@ $robots = (string)($robots ?? 'index, follow');
         <button type="submit">Go</button>
         <div class="v2-live-search-results js-live-search-results" id="navLiveSearchResults" role="listbox" aria-label="Live search results"></div>
       </form>
-      <a class="v2-admin-link" href="/admin?token=change-this-token" title="Admin"><i class="fa-solid fa-gear"></i></a>
     </div>
   </div>
 </nav>

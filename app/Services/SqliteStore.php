@@ -275,7 +275,7 @@ final class SqliteStore
         $containsPeople = in_array('people', $buckets, true);
         $mediaOnly = !$containsPeople;
         if ($mediaOnly) {
-            $where[] = "(release_date IS NULL OR release_date = '' OR release_date <= :today)";
+            $where[] = "(release_date IS NOT NULL AND release_date <> '' AND release_date <= :today)";
             $params[':today'] = gmdate('Y-m-d');
         }
 
@@ -363,7 +363,7 @@ final class SqliteStore
              FROM records
              WHERE bucket IN ('movies', 'tv', 'people')
                AND search_text LIKE :like
-               AND (bucket = 'people' OR release_date IS NULL OR release_date = '' OR release_date <= :today)
+               AND (bucket = 'people' OR (release_date IS NOT NULL AND release_date <> '' AND release_date <= :today))
              ORDER BY
                CASE
                  WHEN lower(COALESCE(NULLIF(title, ''), NULLIF(name, ''))) = :exact THEN 0
@@ -418,7 +418,7 @@ final class SqliteStore
             "SELECT payload, created_at, updated_at
              FROM records
              WHERE bucket = :bucket
-               AND (release_date IS NULL OR release_date = '' OR release_date <= :today)
+               AND (release_date IS NOT NULL AND release_date <> '' AND release_date <= :today)
              ORDER BY RANDOM()
              LIMIT :limit"
         );

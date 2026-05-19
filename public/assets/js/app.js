@@ -266,8 +266,13 @@ document.documentElement.classList.add('js-ready');
 
   const profileLabel = (bucket) => bucket === 'person' ? 'Actors' : (bucket === 'tv' ? 'TV Shows' : 'Movies');
   const profilePageState = {};
+  const hasProfileReleaseDate = (item) => {
+    const bucket = profileBucket(item);
+    if (bucket === 'person') return true;
+    return !!String(item?.year || '').trim();
+  };
 
-  const filteredProfileItems = (section, bucket) => read(section).filter((item) => profileBucket(item) === bucket);
+  const filteredProfileItems = (section, bucket) => read(section).filter((item) => profileBucket(item) === bucket && hasProfileReleaseDate(item));
 
   const renderProfilePager = (section, bucket, current, pages, total, start, end) => {
     const footer = document.querySelector(`[data-profile-pagination="${section}:${bucket}"]`);
@@ -890,4 +895,44 @@ document.documentElement.classList.add('js-ready');
 
   splide.on('mounted move moved', function () { updateBackdrop(splide); });
   splide.mount();
+})();
+
+/* Detail page collection carousel */
+(function () {
+  if (typeof window.Splide === 'undefined') return;
+
+  document.querySelectorAll('.js-collection-splide').forEach(function (carousel) {
+    if (carousel.classList.contains('is-mounted')) return;
+
+    const splide = new Splide(carousel, {
+      type: 'slide',
+      autoWidth: true,
+      perMove: 1,
+      gap: '1rem',
+      focus: 0,
+      trimSpace: false,
+      pagination: false,
+      arrows: true,
+      drag: true,
+      keyboard: true,
+      waitForTransition: false,
+      flickPower: 450,
+      breakpoints: {
+        575: { gap: '.75rem' }
+      }
+    });
+
+    const updateCollectionOverflow = function () {
+      const track = carousel.querySelector('.splide__track');
+      const list = carousel.querySelector('.splide__list');
+      if (!track || !list) return;
+      const isOverflowing = list.scrollWidth > track.clientWidth + 2;
+      carousel.classList.toggle('is-collection-overflowing', isOverflowing);
+    };
+
+    splide.on('mounted resized updated refresh', updateCollectionOverflow);
+    splide.mount();
+    window.setTimeout(updateCollectionOverflow, 80);
+    carousel.classList.add('is-mounted');
+  });
 })();

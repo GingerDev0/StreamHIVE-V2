@@ -21,11 +21,14 @@
   </div>
 </section>
 
+
+
 <div class="row g-4 mt-4 align-items-start">
   <section id="seasons" class="col-lg-8">
+
     <div class="v2-section-head compact"><div><span class="v2-section-eyebrow"><i class="fa-solid fa-layer-group"></i> Episode guide</span><h2>Seasons</h2></div></div>
     <div class="row g-3 mb-4 season-card-grid">
-    <?php foreach (($item['seasons'] ?? []) as $season): $sn=(int)($season['season_number']??0); if($sn<1 || is_future_date((string)($season['air_date'] ?? ''))) continue; ?>
+    <?php foreach (($item['seasons'] ?? []) as $season): $sn=(int)($season['season_number']??0); if($sn<1 || trim((string)($season['air_date'] ?? '')) === '' || is_future_date((string)($season['air_date'] ?? ''))) continue; ?>
       <div class="col-sm-6 col-xl-4">
         <a class="season-card text-decoration-none" href="<?= e(url('tv/'.$item['slug'].'/s'.str_pad((string)$sn,2,'0',STR_PAD_LEFT))) ?>">
           <div class="season-poster-wrap">

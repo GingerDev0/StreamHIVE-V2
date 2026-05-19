@@ -41,6 +41,7 @@ final class MediaController
             'ogImage' => meta_image($movie['backdrop_path'] ?? ($movie['poster_path'] ?? null)),
             'canonicalUrl' => absolute_url('movies/' . ($movie['slug'] ?? '')),
             'item' => $movie,
+            'collectionMovies' => $this->safeCollectionMovies($movie),
             'related' => $this->relatedItems($movie, 'movie'),
         ]);
     }
@@ -84,8 +85,8 @@ final class MediaController
         } catch (\Throwable) {
             return $this->notFound();
         }
-        if (is_future_date((string)($season['air_date'] ?? ''))) return $this->notFound();
-        $season['episodes'] = array_values(array_filter($season['episodes'] ?? [], static fn(array $episode): bool => !is_future_date((string)($episode['air_date'] ?? ''))));
+        if (trim((string)($season['air_date'] ?? '')) === '' || is_future_date((string)($season['air_date'] ?? ''))) return $this->notFound();
+        $season['episodes'] = array_values(array_filter($season['episodes'] ?? [], static fn(array $episode): bool => trim((string)($episode['air_date'] ?? '')) !== '' && !is_future_date((string)($episode['air_date'] ?? ''))));
 
         return View::render('pages/season', [
             'title' => $tv['title'] . ' - Season ' . $seasonNumber,
@@ -119,7 +120,7 @@ final class MediaController
         } catch (\Throwable) {
             return $this->notFound();
         }
-        if (is_future_date((string)($episode['air_date'] ?? ''))) return $this->notFound();
+        if (trim((string)($episode['air_date'] ?? '')) === '' || is_future_date((string)($episode['air_date'] ?? ''))) return $this->notFound();
 
         return View::render('pages/episode', [
             'title' => $tv['title'] . ' S' . $params['season'] . 'E' . $params['episode'] . ' - ' . ($episode['name'] ?? 'Episode'),
@@ -189,11 +190,11 @@ final class MediaController
 
                 if ($type === 'season' && $season > 0) {
                     $seasonData = (new TmdbClient())->season((int)$record['tmdb_id'], $season);
-                    if (is_future_date((string)($seasonData['air_date'] ?? ''))) return ['ok' => false, 'ready' => false, 'message' => 'This season is not available yet.'];
+                    if (trim((string)($seasonData['air_date'] ?? '')) === '' || is_future_date((string)($seasonData['air_date'] ?? ''))) return ['ok' => false, 'ready' => false, 'message' => 'This season is not available yet.'];
                 }
                 if ($type === 'episode' && $season > 0 && $episode > 0) {
                     $episodeData = (new TmdbClient())->episode((int)$record['tmdb_id'], $season, $episode);
-                    if (is_future_date((string)($episodeData['air_date'] ?? ''))) return ['ok' => false, 'ready' => false, 'message' => 'This episode is not available yet.'];
+                    if (trim((string)($episodeData['air_date'] ?? '')) === '' || is_future_date((string)($episodeData['air_date'] ?? ''))) return ['ok' => false, 'ready' => false, 'message' => 'This episode is not available yet.'];
                 }
 
                 $targetUrl = $type === 'episode'
@@ -446,7 +447,7 @@ final class MediaController
             foreach ($episodes as $episode) {
                 $number = (int)($episode['episode_number'] ?? 0);
                 if ($number < 1) continue;
-                if (is_future_date((string)($episode['air_date'] ?? ''))) continue;
+                if (trim((string)($episode['air_date'] ?? '')) === '' || is_future_date((string)($episode['air_date'] ?? ''))) continue;
                 if ((int)$candidateSeason === $seasonNumber && $number <= $episodeNumber) continue;
 
                 return [
@@ -531,6 +532,15 @@ final class MediaController
         }
     }
 
+    private function safeCollectionMovies(array $movie): array
+    {
+        try {
+            return $this->importer->collectionMoviesFor($movie);
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     private function relatedItems(array $current, string $type, int $limit = 6): array
     {
         $currentId = (string)($current['id'] ?? '');
@@ -542,7 +552,7 @@ final class MediaController
 
         $scored = [];
         foreach ($items as $item) {
-            if (is_future_date(media_release_date($item))) continue;
+            if (!is_released_media($item)) continue;
             $itemId = (string)($item['id'] ?? '');
             $itemTmdbId = (string)($item['tmdb_id'] ?? '');
             $itemSlug = (string)($item['slug'] ?? '');
@@ -636,7 +646,7 @@ final class MediaController
         $query = strtolower(trim($query));
         return array_values(array_filter($items, function (array $item) use ($query, $genre, $rating, $year): bool {
             $isPerson = ($item['media_type'] ?? '') === 'person' || isset($item['profile_path']);
-            if (!$isPerson && is_future_date(media_release_date($item))) return false;
+            if (!$isPerson && !is_released_media($item)) return false;
             if ($query !== '') {
                 $knownFor = [];
                 foreach (($item['known_for'] ?? []) as $credit) $knownFor[] = (string)($credit['title'] ?? '');

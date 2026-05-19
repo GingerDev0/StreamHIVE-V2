@@ -19,8 +19,11 @@ $seasonName = $season['name'] ?? ('Season ' . $seasonNumber);
   </div>
 </div>
 
+
+
 <div class="row g-4 mt-4 align-items-start">
   <section class="col-lg-8">
+
     <h2 class="h4 text-white mb-3">Episodes</h2>
     <div class="row g-3 season-episode-grid">
       <?php foreach ($episodes as $ep): ?>

@@ -59,6 +59,54 @@ final class ImportService
         return $record;
     }
 
+    public function collectionMoviesFor(array $movie): array
+    {
+        $collection = $movie['belongs_to_collection'] ?? null;
+        $collectionId = (int)($collection['id'] ?? 0);
+        if ($collectionId <= 0) return [];
+
+        $data = $this->tmdb->collection($collectionId);
+        $parts = array_values(array_filter($data['parts'] ?? [], static function (array $part): bool {
+            if (empty($part['id'])) return false;
+            $releaseDate = (string)($part['release_date'] ?? '');
+            if (function_exists('\\is_future_date') && \is_future_date($releaseDate)) return false;
+            return true;
+        }));
+        if (!$parts) return [];
+
+        usort($parts, static function (array $a, array $b): int {
+            $ad = (string)($a['release_date'] ?? '');
+            $bd = (string)($b['release_date'] ?? '');
+            if ($ad === '') return 1;
+            if ($bd === '') return -1;
+            return strcmp($ad, $bd);
+        });
+
+        $records = [];
+        $currentId = (int)($movie['tmdb_id'] ?? $movie['id'] ?? 0);
+        foreach ($parts as $part) {
+            if ((int)($part['id'] ?? 0) === $currentId) {
+                $record = $movie;
+            } else {
+                $existing = $this->repo->movies->find((int)$part['id']);
+                $record = $existing ?: $this->normalizeLightMedia($part, 'movie');
+            }
+            if (!is_released_media($record)) {
+                continue;
+            }
+            $record['collection_name'] = (string)($data['name'] ?? ($collection['name'] ?? ''));
+            $record['collection_backdrop_path'] = $data['backdrop_path'] ?? ($collection['backdrop_path'] ?? null);
+            $record['collection_poster_path'] = $data['poster_path'] ?? ($collection['poster_path'] ?? null);
+            $records[] = $record;
+        }
+
+        $records = array_values(array_filter($records, static fn(array $record): bool => is_released_media($record))); 
+        $toUpsert = array_values(array_filter($records, static fn(array $record): bool => ($record['import_status'] ?? '') !== 'full'));
+        if ($toUpsert) $this->repo->movies->upsertMany($toUpsert);
+
+        return $records;
+    }
+
     public function importPerson(int $id): array
     {
         $data = $this->tmdb->person($id);
@@ -78,7 +126,12 @@ final class ImportService
 
     public function prefetchResults(array $results, string $type, int $limit = 20): int
     {
-        $results = array_values(array_filter(array_slice($results, 0, max(0, $limit)), static fn(array $row): bool => !empty($row['id'])));
+        $results = array_values(array_filter(array_slice($results, 0, max(0, $limit)), static function (array $row) use ($type): bool {
+            if (empty($row['id'])) return false;
+            if ($type === 'movie') return trim((string)($row['release_date'] ?? '')) !== '';
+            if ($type === 'tv') return trim((string)($row['first_air_date'] ?? '')) !== '';
+            return true;
+        }));
         if (!$results) return 0;
 
         $store = $type === 'person' ? $this->repo->people : ($type === 'movie' ? $this->repo->movies : $this->repo->tv);
@@ -125,7 +178,10 @@ final class ImportService
             return $id > 0 ? $this->importPerson($id) : $record;
         }
 
-        if (($record['import_status'] ?? '') === 'full' && !empty($record['cast'])) return $record;
+        $hasCompanyInfo = $type === 'movie'
+            ? (array_key_exists('production_companies', $record) && array_key_exists('belongs_to_collection', $record))
+            : (array_key_exists('networks', $record) && array_key_exists('production_companies', $record));
+        if (($record['import_status'] ?? '') === 'full' && !empty($record['cast']) && $hasCompanyInfo) return $record;
         $id = (int)($record['tmdb_id'] ?? $record['id'] ?? 0);
         if ($id <= 0) return $record;
         return $type === 'movie' ? $this->importMovie($id) : $this->importTv($id);
@@ -289,6 +345,9 @@ final class ImportService
             'genres' => $genres,
             'cast' => [],
             'seasons' => [],
+            'production_companies' => [],
+            'networks' => [],
+            'belongs_to_collection' => null,
             'import_status' => 'prefetched',
         ];
     }
@@ -333,7 +392,39 @@ final class ImportService
             'genres' => array_values(array_filter(array_map(fn($g) => $g['name'] ?? '', $data['genres'] ?? []))),
             'cast' => array_map(fn($c) => ['id'=>$c['id']??null,'name'=>$c['name']??'','slug'=>$this->uniqueSlug((string)($c['name']??''), 'person', (int)($c['id']??0)),'character'=>$c['character']??'','profile_path'=>$c['profile_path']??null], array_slice($data['credits']['cast'] ?? [], 0, 16)),
             'seasons' => $type === 'tv' ? ($data['seasons'] ?? []) : [],
+            'production_companies' => $this->normalizeCompanies($data['production_companies'] ?? []),
+            'networks' => $type === 'tv' ? $this->normalizeCompanies($data['networks'] ?? []) : [],
+            'belongs_to_collection' => $type === 'movie' ? $this->normalizeCollection($data['belongs_to_collection'] ?? null) : null,
         ];
+    }
+
+    private function normalizeCollection(?array $collection): ?array
+    {
+        if (!$collection || empty($collection['id'])) return null;
+        $name = trim((string)($collection['name'] ?? ''));
+        if ($name === '') return null;
+        return [
+            'id' => (int)$collection['id'],
+            'name' => $name,
+            'poster_path' => $collection['poster_path'] ?? null,
+            'backdrop_path' => $collection['backdrop_path'] ?? null,
+        ];
+    }
+
+    private function normalizeCompanies(array $companies): array
+    {
+        $records = [];
+        foreach ($companies as $company) {
+            $name = trim((string)($company['name'] ?? ''));
+            if ($name === '') continue;
+            $records[] = [
+                'id' => isset($company['id']) ? (int)$company['id'] : null,
+                'name' => $name,
+                'logo_path' => $company['logo_path'] ?? null,
+                'origin_country' => $company['origin_country'] ?? null,
+            ];
+        }
+        return $records;
     }
 
 
@@ -401,6 +492,8 @@ final class ImportService
                 'genres' => [],
                 'cast' => [],
                 'seasons' => [],
+                'production_companies' => [],
+                'networks' => [],
                 'import_status' => 'prefetched',
             ];
             $media[$type === 'movie' ? 'movies' : 'tv'][] = $record;

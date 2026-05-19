@@ -55,6 +55,16 @@ $heroBackground = $heroMovies[0] ?? ($moviesTrending[0] ?? $moviesRecent[0] ?? n
   </div>
 </section>
 
+<div class="alert" style="background: linear-gradient(135deg, var(--brand), var(--brand-dark)) !important; display: grid; grid-template-columns: 1.25em 1fr 1.25em; align-items: center; gap: 0.5rem;">
+  <i class="fa-solid fa-info-circle"></i>
+
+  <div style="text-align: center;">
+    <div>As people browse the site, more videos unlock over time.</div>
+    <div style="color: #000; font-size: 0.9em; opacity: 0.5;">This website is owned and maintained by <b>GingerDev</b>.</div>
+  </div>
+
+  <i class="fa-solid fa-info-circle" style="text-align: right;"></i>
+</div>
 
 <?php foreach ([['Recent Movies',$moviesRecent,'movie','fa-fire'],['Trending Movies',$moviesTrending,'movie','fa-arrow-trend-up'],['Recent TV Shows',$tvRecent,'tv','fa-satellite-dish'],['Trending TV Shows',$tvTrending,'tv','fa-bolt']] as [$heading,$items,$type,$icon]): ?>
 <section class="v2-section mb-5">
