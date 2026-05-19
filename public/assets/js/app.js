@@ -1,12 +1,12 @@
 document.documentElement.classList.add('js-ready');
 
+
 (() => {
   const KEYS = {
     bookmarks: 'movieDB.bookmarks.v1',
-    continue: 'movieDB.continueWatching.v1',
     recent: 'movieDB.recent.v1'
   };
-  const LIMITS = { bookmarks: 80, continue: 24, recent: 36 };
+  const LIMITS = { bookmarks: 80, recent: 36 };
 
   const read = (key) => {
     try { return JSON.parse(localStorage.getItem(KEYS[key]) || '[]'); }
@@ -91,14 +91,157 @@ document.documentElement.classList.add('js-ready');
     upsert('recent', parseMedia(link), 'viewedAt');
   });
 
+
+  const parseContentPath = (href) => {
+    let url;
+    try { url = new URL(href, window.location.origin); } catch { return null; }
+    if (url.origin !== window.location.origin) return null;
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    let match;
+    const withTmdbId = (params) => {
+      const tmdbId = url.searchParams.get('tmdb_id');
+      if (tmdbId && /^\d+$/.test(tmdbId)) params.tmdb_id = tmdbId;
+      return params;
+    };
+    if ((match = path.match(/^\/movies\/([^\/]+)$/))) return withTmdbId({ type: 'movie', slug: decodeURIComponent(match[1]) });
+    if ((match = path.match(/^\/actors?\/([^\/]+)$/))) return withTmdbId({ type: 'person', slug: decodeURIComponent(match[1]) });
+    if ((match = path.match(/^\/tv\/([^\/]+)\/s(\d{1,2})\/e(\d{1,3})$/))) return withTmdbId({ type: 'episode', slug: decodeURIComponent(match[1]), season: String(parseInt(match[2], 10)), episode: String(parseInt(match[3], 10)) });
+    if ((match = path.match(/^\/tv\/([^\/]+)\/s(\d{1,2})$/))) return withTmdbId({ type: 'season', slug: decodeURIComponent(match[1]), season: String(parseInt(match[2], 10)) });
+    if ((match = path.match(/^\/tv\/([^\/]+)$/))) return withTmdbId({ type: 'tv', slug: decodeURIComponent(match[1]) });
+    return null;
+  };
+
+  const modalMessage = document.querySelector('[data-fetch-modal-message]');
+  const fetchModalElement = document.getElementById('contentFetchModal');
+  let fetchModal = null;
+  const forceShowFetchModal = () => {
+    if (!fetchModalElement) return;
+    fetchModalElement.classList.add('show');
+    fetchModalElement.removeAttribute('aria-hidden');
+    fetchModalElement.setAttribute('aria-modal', 'true');
+    fetchModalElement.setAttribute('role', 'dialog');
+    fetchModalElement.style.display = 'block';
+    document.body.classList.add('modal-open');
+    fetchModalElement.style.zIndex = '2147483001';
+    const dialog = fetchModalElement.querySelector('.modal-dialog');
+    if (dialog) dialog.style.zIndex = '2147483002';
+    const content = fetchModalElement.querySelector('.modal-content');
+    if (content) content.style.zIndex = '2147483002';
+    if (!document.querySelector('.modal-backdrop.fetch-modal-backdrop')) {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop fade show fetch-modal-backdrop';
+      backdrop.style.zIndex = '2147483000';
+      document.body.appendChild(backdrop);
+    } else {
+      document.querySelectorAll('.modal-backdrop.fetch-modal-backdrop').forEach((backdrop) => {
+        backdrop.style.zIndex = '2147483000';
+      });
+    }
+  };
+  const showFetchModal = (message) => {
+    if (modalMessage) modalMessage.textContent = message || 'This title is being added now. Please wait...';
+    if (!fetchModalElement) return;
+    forceShowFetchModal();
+    if (window.bootstrap && window.bootstrap.Modal) {
+      fetchModal = fetchModal || bootstrap.Modal.getOrCreateInstance(fetchModalElement, { backdrop: 'static', keyboard: false });
+      fetchModal.show();
+    }
+  };
+  const setFetchError = (message) => {
+    forceShowFetchModal();
+    if (modalMessage) modalMessage.innerHTML = `${escapeHtml(message || 'Fetching failed. Please try again.')}<br><button class="btn btn-sm btn-warning mt-3" type="button" onclick="window.location.reload()">Reload</button>`;
+  };
+  const buildFetchUrl = (endpoint, params) => {
+    const qs = new URLSearchParams(params);
+    return `${endpoint}?${qs.toString()}`;
+  };
+  const contentLabel = (type) => type === 'person' ? 'actor page' : (type === 'episode' ? 'episode' : (type === 'season' ? 'season' : (type === 'tv' ? 'TV show' : 'movie')));
+
+  const runContentFetch = async (params, fallbackUrl, options = {}) => {
+    const markedNeedsFetch = options.markedNeedsFetch === true;
+    const link = options.link || null;
+
+    showFetchModal(`This ${contentLabel(params.type)} is being fetched and saved locally. Please wait...`);
+
+    try {
+      const statusResponse = await fetch(buildFetchUrl('/ajax/content-status', params), { headers: { Accept: 'application/json' } });
+      if (!statusResponse.ok) { window.location.href = fallbackUrl; return; }
+      const status = await statusResponse.json();
+      if (status.ok && status.ready && !markedNeedsFetch) {
+        window.location.href = status.url || fallbackUrl;
+        return;
+      }
+      if (status.ok && status.ready && markedNeedsFetch) {
+        if (link) link.dataset.fetchContent = '0';
+        window.location.href = status.url || fallbackUrl;
+        return;
+      }
+
+      const ensureResponse = await fetch(buildFetchUrl('/ajax/ensure-content', params), { headers: { Accept: 'application/json' } });
+      if (!ensureResponse.ok) { window.location.href = fallbackUrl; return; }
+      const ensured = await ensureResponse.json();
+      if (ensured.ok && ensured.ready && ensured.url) {
+        window.location.href = ensured.url;
+        return;
+      }
+      const failure = ensured.message || 'Opening the page now...';
+      if (/SQLite is still finishing|still finishing the write|was saved/i.test(failure)) {
+        showFetchModal('Finalising the local database write...');
+        setTimeout(() => runContentFetch(params, fallbackUrl, { markedNeedsFetch: true, link }), 700);
+      } else if (/not available yet|not released yet/i.test(failure)) {
+        setFetchError(failure);
+      } else {
+        showFetchModal('Opening the page now...');
+        window.location.href = fallbackUrl;
+      }
+    } catch (error) {
+      showFetchModal('Opening the page now...');
+      window.location.href = fallbackUrl;
+    }
+  };
+
+  document.addEventListener('click', async (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link || event.defaultPrevented || event.target.closest('.js-bookmark-btn')) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (link.target && link.target !== '_self') return;
+
+    const params = parseContentPath(link.getAttribute('href') || '');
+    if (!params) return;
+
+    const markedNeedsFetch = link.dataset.fetchContent === '1';
+    const markedReady = link.dataset.fetchContent === '0';
+    if (markedReady) return;
+    if (!markedNeedsFetch && !link.classList.contains('js-media-link')) return;
+
+    event.preventDefault();
+    upsert('recent', parseMedia(link), 'viewedAt');
+
+    // Listing/search/profile/cast cards can point at lightweight prefetched records.
+    // Show the locked modal before any network checks so users get immediate feedback.
+    await runContentFetch(params, link.href, { markedNeedsFetch, link });
+  });
+
+  const autoFetch = document.querySelector('[data-auto-fetch-content="1"]');
+  if (autoFetch) {
+    const params = {
+      type: autoFetch.dataset.fetchType || 'movie',
+      slug: autoFetch.dataset.fetchSlug || ''
+    };
+    if (autoFetch.dataset.fetchSeason) params.season = autoFetch.dataset.fetchSeason;
+    if (autoFetch.dataset.fetchEpisode) params.episode = autoFetch.dataset.fetchEpisode;
+    const autoUrl = new URL(autoFetch.dataset.fetchFallbackUrl || window.location.href, window.location.origin);
+    const autoTmdbId = autoUrl.searchParams.get('tmdb_id');
+    if (autoTmdbId && /^\d+$/.test(autoTmdbId)) params.tmdb_id = autoTmdbId;
+    if (params.slug) runContentFetch(params, autoFetch.dataset.fetchFallbackUrl || window.location.href, { markedNeedsFetch: true });
+  }
+
   const pageMedia = document.querySelector('.js-page-media[data-media]');
   if (pageMedia) upsert('recent', parseMedia(pageMedia), 'viewedAt');
 
-  const continueMedia = document.querySelector('.js-continue-media[data-media]');
-  if (continueMedia) upsert('continue', parseMedia(continueMedia), 'lastWatchedAt');
 
   const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
-  const typeLabel = (type) => type === 'tv' ? 'TV' : (type === 'episode' ? 'Episode' : 'Movie');
+  const typeLabel = (type) => type === 'person' ? 'Actor' : (type === 'tv' ? 'TV' : (type === 'episode' ? 'Episode' : 'Movie'));
   const renderCard = (item, section) => {
     const saved = hasBookmark(item);
     const meta = item.meta || [typeLabel(item.type), item.year].filter(Boolean).join(' · ');
@@ -117,11 +260,11 @@ document.documentElement.classList.add('js-ready');
   function renderProfile() {
     const root = document.querySelector('[data-profile-section]');
     if (!root) return;
-    ['bookmarks', 'continue', 'recent'].forEach((section) => {
+    ['bookmarks', 'recent'].forEach((section) => {
       const items = read(section);
       const grid = document.querySelector(`[data-profile-grid="${section}"]`);
       const empty = document.querySelector(`[data-profile-empty="${section}"]`);
-      const count = document.querySelector(`[data-profile-count="${section === 'continue' ? 'continue' : section}"]`);
+      const count = document.querySelector(`[data-profile-count="${section}"]`);
       if (count) count.textContent = String(items.length);
       if (grid) grid.innerHTML = items.slice(0, section === 'bookmarks' ? 30 : 18).map((item) => renderCard(item, section)).join('');
       if (empty) empty.classList.toggle('d-none', items.length > 0);
@@ -147,6 +290,7 @@ document.documentElement.classList.add('js-ready');
   });
 
   window.addEventListener('storage', () => { syncBookmarkButtons(); renderProfile(); });
+  window.MovieDBRefresh = () => { syncBookmarkButtons(); renderProfile(); };
   syncBookmarkButtons();
   renderProfile();
 })();
@@ -271,4 +415,251 @@ document.documentElement.classList.add('js-ready');
 
   $('.coming-panel').hide();
   activateComingTab($('.coming-tab.active').data('coming-tab') || 'movie');
+})(window.jQuery);
+
+/* jQuery listings: AJAX filters + pagination for /movies, /tv and /s */
+(function ($) {
+  if (!$) return;
+
+  const shellSelector = '.js-jquery-listing-shell[data-jquery-listing]';
+  const supportedPath = function () {
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    return path === '/movies' || path === '/tv' || path === '/s' || path.indexOf('/s/') === 0;
+  };
+
+  const cleanParams = function (params) {
+    const cleaned = new URLSearchParams();
+    params.forEach(function (pair) {
+      if (pair.name === 'page') return;
+      if (pair.value === null || String(pair.value).trim() === '') return;
+      cleaned.append(pair.name, pair.value);
+    });
+    return cleaned;
+  };
+
+  const setListingLoading = function ($shell, loading) {
+    $shell.toggleClass('is-loading', !!loading);
+    $shell.attr('aria-busy', loading ? 'true' : 'false');
+  };
+
+  const refreshListingBehaviours = function () {
+    if (window.MovieDBRefresh) window.MovieDBRefresh();
+  };
+
+  const replaceListingFromHtml = function (html, url, push) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const $incoming = $(doc).find(shellSelector).first();
+    const $current = $(shellSelector).first();
+
+    if (!$incoming.length || !$current.length) {
+      window.location.href = url;
+      return;
+    }
+
+    const incomingTitle = $(doc).find('title').text();
+    $current.replaceWith($incoming);
+    if (incomingTitle) document.title = incomingTitle;
+    if (push) window.history.pushState({ jqueryListing: true }, incomingTitle || document.title, url);
+    refreshListingBehaviours();
+
+    const $newShell = $(shellSelector).first();
+    if ($newShell.length) {
+      $('html, body').animate({ scrollTop: Math.max(0, $newShell.offset().top - 110) }, 220);
+    }
+  };
+
+  const loadListing = function (url, push) {
+    if (!supportedPath()) {
+      window.location.href = url;
+      return;
+    }
+
+    const $shell = $(shellSelector).first();
+    if (!$shell.length) {
+      window.location.href = url;
+      return;
+    }
+
+    setListingLoading($shell, true);
+    $.ajax({
+      url: url,
+      method: 'GET',
+      dataType: 'html',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).done(function (html) {
+      replaceListingFromHtml(html, url, push !== false);
+    }).fail(function () {
+      window.location.href = url;
+    }).always(function () {
+      setListingLoading($(shellSelector).first(), false);
+    });
+  };
+
+  $(document).on('submit', shellSelector + ' form[method="get"]', function (event) {
+    event.preventDefault();
+    const form = this;
+    const action = form.getAttribute('action') || window.location.pathname;
+    const target = new URL(action, window.location.origin);
+    const params = cleanParams($(form).serializeArray());
+    const qs = params.toString();
+    const url = target.pathname + (qs ? '?' + qs : '');
+    loadListing(url, true);
+  });
+
+  $(document).on('click', shellSelector + ' .pager-shell a[href], ' + shellSelector + ' .pagination-mobile a[href]', function (event) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const href = this.getAttribute('href') || '';
+    const url = new URL(href, window.location.href);
+    if (url.origin !== window.location.origin) return;
+    event.preventDefault();
+    loadListing(url.pathname + url.search, true);
+  });
+
+  $(document).on('change', shellSelector + ' select', function () {
+    const $form = $(this).closest('form');
+    if ($form.length) $form.trigger('submit');
+  });
+
+  window.addEventListener('popstate', function () {
+    if ($(shellSelector).length && supportedPath()) loadListing(window.location.pathname + window.location.search, false);
+  });
+})(window.jQuery);
+
+/* Navbar live search: capped at 6 clickable results */
+(function ($) {
+  if (!$) return;
+
+  const $form = $('.js-live-search-form').first();
+  const $input = $form.find('.js-live-search-input').first();
+  const $results = $form.find('.js-live-search-results').first();
+  if (!$form.length || !$input.length || !$results.length) return;
+
+  const escapeHtml = function (value) {
+    return String(value || '').replace(/[&<>'"]/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch];
+    });
+  };
+
+  let timer = null;
+  let request = null;
+  let activeIndex = -1;
+  let lastQuery = '';
+
+  const hideResults = function () {
+    $results.removeClass('is-open').empty();
+    $input.attr('aria-expanded', 'false');
+    activeIndex = -1;
+  };
+
+  const setActive = function (index) {
+    const $items = $results.find('.v2-live-search-item');
+    if (!$items.length) return;
+    activeIndex = Math.max(0, Math.min(index, $items.length - 1));
+    $items.removeClass('is-active').attr('aria-selected', 'false');
+    $items.eq(activeIndex).addClass('is-active').attr('aria-selected', 'true');
+  };
+
+  const renderResults = function (payload) {
+    const items = Array.isArray(payload && payload.results) ? payload.results.slice(0, 6) : [];
+    const query = String(payload && payload.query ? payload.query : '').trim();
+
+    if (!query || query !== lastQuery) return;
+
+    if (!items.length) {
+      $results.html('<div class="v2-live-search-empty">No local matches yet. Press Enter to search/discover.</div>');
+      $results.addClass('is-open');
+      $input.attr('aria-expanded', 'true');
+      activeIndex = -1;
+      return;
+    }
+
+    let html = '<div class="v2-live-search-list">';
+    items.forEach(function (item, index) {
+      const mediaJson = escapeHtml(JSON.stringify(item.media || {}));
+      const rating = item.rating ? '<span><i class="fa-solid fa-star"></i> ' + escapeHtml(item.rating) + '</span>' : '';
+      html += '<a class="v2-live-search-item js-media-link" role="option" aria-selected="false" data-live-search-index="' + index + '" data-fetch-content="' + escapeHtml(item.fetch_content || '0') + '" data-media=\'' + mediaJson + '\' href="' + escapeHtml(item.url || '#') + '">';
+      html += '<span class="v2-live-search-poster"><img src="' + escapeHtml(item.poster || '/assets/img/placeholder.svg') + '" alt="' + escapeHtml(item.title || 'Result') + ' poster" loading="lazy"></span>';
+      html += '<span class="v2-live-search-copy"><strong>' + escapeHtml(item.title || 'Untitled') + '</strong><small><span>' + escapeHtml(item.meta || item.type_label || 'Result') + '</span>' + rating + '</small></span>';
+      html += '<span class="v2-live-search-arrow"><i class="fa-solid fa-arrow-right"></i></span>';
+      html += '</a>';
+    });
+    html += '</div>';
+    html += '<a class="v2-live-search-all" href="' + escapeHtml(payload.search_url || ('/s?q=' + encodeURIComponent(query))) + '">View all results for <strong>' + escapeHtml(query) + '</strong></a>';
+
+    $results.html(html).addClass('is-open');
+    $input.attr('aria-expanded', 'true');
+    activeIndex = -1;
+  };
+
+  const search = function () {
+    const query = String($input.val() || '').trim();
+    lastQuery = query;
+
+    if (query.length < 2) {
+      hideResults();
+      return;
+    }
+
+    if (request && request.readyState !== 4) request.abort();
+    $results.html('<div class="v2-live-search-loading"><span></span> Searching...</div>').addClass('is-open');
+    $input.attr('aria-expanded', 'true');
+
+    request = $.ajax({
+      url: '/ajax/live-search',
+      method: 'GET',
+      dataType: 'json',
+      data: { q: query },
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).done(renderResults).fail(function (xhr) {
+      if (xhr && xhr.statusText === 'abort') return;
+      hideResults();
+    });
+  };
+
+  $input.on('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(search, 160);
+  });
+
+  $input.on('focus', function () {
+    if ($results.children().length && String($input.val() || '').trim().length >= 2) {
+      $results.addClass('is-open');
+      $input.attr('aria-expanded', 'true');
+    }
+  });
+
+  $input.on('keydown', function (event) {
+    const $items = $results.find('.v2-live-search-item');
+    if (!$results.hasClass('is-open') || !$items.length) {
+      if (event.key === 'Escape') hideResults();
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActive(activeIndex + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActive(activeIndex <= 0 ? $items.length - 1 : activeIndex - 1);
+    } else if (event.key === 'Enter' && activeIndex >= 0) {
+      event.preventDefault();
+      $items.eq(activeIndex).trigger('click');
+      window.location.href = $items.eq(activeIndex).attr('href');
+    } else if (event.key === 'Escape') {
+      hideResults();
+    }
+  });
+
+  $(document).on('mousemove', '.v2-live-search-item', function () {
+    const index = parseInt($(this).data('live-search-index'), 10);
+    if (!Number.isNaN(index)) setActive(index);
+  });
+
+  $(document).on('mousedown', function (event) {
+    if (!$(event.target).closest('.js-live-search-form').length) hideResults();
+  });
+
+  $form.on('submit', function () {
+    hideResults();
+  });
 })(window.jQuery);

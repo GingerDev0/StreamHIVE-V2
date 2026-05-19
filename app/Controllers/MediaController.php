@@ -8,6 +8,7 @@ use App\Core\View;
 use App\Models\Repository;
 use App\Services\TmdbClient;
 use App\Services\ImportService;
+use App\Services\SqliteStore;
 
 final class MediaController
 {
@@ -22,10 +23,14 @@ final class MediaController
 
     public function movie(array $params): string
     {
-        $movie = $this->repo->bySlug('movie', $params['slug']);
-        if (!$movie) $movie = $this->autoImport('movie', $params['slug']);
-        if (!$movie) return $this->notFound();
-        $movie = $this->importer->ensureFull($movie, 'movie');
+        try {
+            $movie = $this->repo->bySlug('movie', $params['slug']);
+            if (!$movie) $movie = $this->autoImport('movie', $params['slug']);
+            if (!$movie) return $this->notFound();
+            $movie = $this->importer->ensureFull($movie, 'movie');
+        } catch (\Throwable) {
+            return $this->fetchingPage('movie', (string)$params['slug'], 'This movie page is being fetched and saved locally. Please wait...');
+        }
         if (!is_released_media($movie)) return $this->notFound();
         return View::render('pages/movie', [
             'title' => ($movie['title'] ?? 'Movie') . ' | Watch Movie',
@@ -42,10 +47,14 @@ final class MediaController
 
     public function tv(array $params): string
     {
-        $tv = $this->repo->bySlug('tv', $params['slug']);
-        if (!$tv) $tv = $this->autoImport('tv', $params['slug']);
-        if (!$tv) return $this->notFound();
-        $tv = $this->importer->ensureFull($tv, 'tv');
+        try {
+            $tv = $this->repo->bySlug('tv', $params['slug']);
+            if (!$tv) $tv = $this->autoImport('tv', $params['slug']);
+            if (!$tv) return $this->notFound();
+            $tv = $this->importer->ensureFull($tv, 'tv');
+        } catch (\Throwable) {
+            return $this->fetchingPage('tv', (string)$params['slug'], 'This TV show is being fetched and saved locally. Please wait...');
+        }
         if (!is_released_media($tv)) return $this->notFound();
         return View::render('pages/tv', [
             'title' => ($tv['title'] ?? 'TV Show') . ' | TV Show',
@@ -129,6 +138,160 @@ final class MediaController
     }
 
 
+    public function contentStatus(array $params): string
+    {
+        return $this->jsonResponse($this->contentState(false));
+    }
+
+    public function ensureContent(array $params): string
+    {
+        return $this->jsonResponse($this->contentState(true));
+    }
+
+    private function contentState(bool $ensure): array
+    {
+        $type = (string)($_GET['type'] ?? '');
+        $slug = trim((string)($_GET['slug'] ?? ''));
+        $season = max(0, (int)($_GET['season'] ?? 0));
+        $episode = max(0, (int)($_GET['episode'] ?? 0));
+
+        if (!in_array($type, ['movie', 'tv', 'season', 'episode', 'person'], true) || $slug === '') {
+            return ['ok' => false, 'ready' => false, 'message' => 'Invalid content request.'];
+        }
+
+        try {
+            if ($type === 'movie') {
+                $record = $this->repo->bySlug('movie', $slug);
+                $ready = $record && (($record['import_status'] ?? '') === 'full') && !empty($record['cast']);
+                if (!$ensure) return ['ok' => true, 'ready' => $ready, 'url' => url('movies/' . $slug)];
+                if (!$record) $record = $this->autoImport('movie', $slug);
+                if ($record) $record = $this->importer->ensureFull($record, 'movie');
+                if (!$record || !is_released_media($record)) return ['ok' => false, 'ready' => false, 'message' => 'This movie could not be added right now.'];
+                $finalSlug = (string)($record['slug'] ?? $slug);
+                if (!SqliteStore::waitUntilRecordReadable('movies', $finalSlug)) {
+                    return ['ok' => false, 'ready' => false, 'message' => 'The movie was saved, but SQLite is still finishing the write. Please try again.'];
+                }
+                return ['ok' => true, 'ready' => true, 'url' => url('movies/' . $finalSlug)];
+            }
+
+            if ($type === 'tv' || $type === 'season' || $type === 'episode') {
+                $record = $this->repo->bySlug('tv', $slug);
+                $ready = $record && (($record['import_status'] ?? '') === 'full') && !empty($record['cast']);
+                if ($type === 'episode') $ready = $ready && $season > 0 && $episode > 0;
+                if ($type === 'season') $ready = $ready && $season > 0;
+                $targetUrl = $type === 'episode'
+                    ? url('tv/' . $slug . '/s' . str_pad((string)$season, 2, '0', STR_PAD_LEFT) . '/e' . str_pad((string)$episode, 2, '0', STR_PAD_LEFT))
+                    : ($type === 'season' ? url('tv/' . $slug . '/s' . str_pad((string)$season, 2, '0', STR_PAD_LEFT)) : url('tv/' . $slug));
+                if (!$ensure) return ['ok' => true, 'ready' => $ready, 'url' => $targetUrl];
+                if (!$record) $record = $this->autoImport('tv', $slug);
+                if ($record) $record = $this->importer->ensureFull($record, 'tv');
+                if (!$record || !is_released_media($record)) return ['ok' => false, 'ready' => false, 'message' => 'This TV show could not be added right now.'];
+
+                if ($type === 'season' && $season > 0) {
+                    $seasonData = (new TmdbClient())->season((int)$record['tmdb_id'], $season);
+                    if (is_future_date((string)($seasonData['air_date'] ?? ''))) return ['ok' => false, 'ready' => false, 'message' => 'This season is not available yet.'];
+                }
+                if ($type === 'episode' && $season > 0 && $episode > 0) {
+                    $episodeData = (new TmdbClient())->episode((int)$record['tmdb_id'], $season, $episode);
+                    if (is_future_date((string)($episodeData['air_date'] ?? ''))) return ['ok' => false, 'ready' => false, 'message' => 'This episode is not available yet.'];
+                }
+
+                $targetUrl = $type === 'episode'
+                    ? url('tv/' . ($record['slug'] ?? $slug) . '/s' . str_pad((string)$season, 2, '0', STR_PAD_LEFT) . '/e' . str_pad((string)$episode, 2, '0', STR_PAD_LEFT))
+                    : ($type === 'season' ? url('tv/' . ($record['slug'] ?? $slug) . '/s' . str_pad((string)$season, 2, '0', STR_PAD_LEFT)) : url('tv/' . ($record['slug'] ?? $slug)));
+                $finalSlug = (string)($record['slug'] ?? $slug);
+                if (!SqliteStore::waitUntilRecordReadable('tv', $finalSlug)) {
+                    return ['ok' => false, 'ready' => false, 'message' => 'The TV show was saved, but SQLite is still finishing the write. Please try again.'];
+                }
+                return ['ok' => true, 'ready' => true, 'url' => $targetUrl];
+            }
+
+            if ($type === 'person') {
+                $record = $this->repo->bySlug('people', $slug);
+                $ready = $record && (($record['import_status'] ?? '') === 'full') && array_key_exists('biography', $record);
+                if (!$ensure) return ['ok' => true, 'ready' => $ready, 'url' => url('actors/' . $slug)];
+                if (!$record) $record = $this->importer->importPersonFromSlug($slug);
+                if ($record) $record = $this->importer->ensureFull($record, 'person');
+                if (!$record) return ['ok' => false, 'ready' => false, 'message' => 'This actor could not be added right now.'];
+                $finalSlug = (string)($record['slug'] ?? $slug);
+                if (!SqliteStore::waitUntilRecordReadable('people', $finalSlug)) {
+                    return ['ok' => false, 'ready' => false, 'message' => 'The actor was saved, but SQLite is still finishing the write. Please try again.'];
+                }
+                return ['ok' => true, 'ready' => true, 'url' => url('actors/' . $finalSlug)];
+            }
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'ready' => false, 'message' => 'Fetching failed. Please try again.'];
+        }
+
+        return ['ok' => false, 'ready' => false, 'message' => 'Unsupported content request.'];
+    }
+
+
+    public function liveSearch(array $params): string
+    {
+        $query = trim((string)($_GET['q'] ?? ''));
+        $items = SqliteStore::liveSearch($query, 6);
+        $results = [];
+
+        foreach ($items as $item) {
+            $bucket = (string)($item['_bucket'] ?? '');
+            $type = $bucket === 'people' ? 'person' : (($item['media_type'] ?? '') === 'tv' || $bucket === 'tv' ? 'tv' : 'movie');
+            $title = (string)($item['title'] ?? $item['name'] ?? 'Untitled');
+            $slug = (string)($item['slug'] ?? slugify($title));
+            $date = media_release_date($item);
+            $year = format_year($date);
+            $rating = $type === 'person' ? '' : (round((float)($item['vote_average'] ?? 0), 1) ?: '');
+            $url = $type === 'person' ? url('actors/' . $slug) : ($type === 'tv' ? url('tv/' . $slug) : url('movies/' . $slug));
+            $posterSource = $type === 'person' ? ($item['profile_path'] ?? null) : ($item['poster_path'] ?? null);
+            $typeLabel = $type === 'person' ? 'Actor' : ($type === 'tv' ? 'TV Show' : 'Movie');
+            $meta = trim(implode(' · ', array_filter([
+                $typeLabel,
+                $year,
+                ($type !== 'person' && !empty($item['age_rating'])) ? (string)$item['age_rating'] : null,
+            ])));
+
+            $media = [
+                'type' => $type,
+                'tmdb_id' => $item['tmdb_id'] ?? $item['id'] ?? null,
+                'slug' => $slug,
+                'title' => $title,
+                'url' => $url,
+                'poster' => tmdb_img($posterSource, 'w185'),
+                'backdrop' => tmdb_img($item['backdrop_path'] ?? $posterSource, 'w780'),
+                'year' => $year,
+                'rating' => $rating,
+                'meta' => $meta,
+            ];
+
+            $results[] = [
+                'title' => $title,
+                'type' => $type,
+                'type_label' => $typeLabel,
+                'year' => $year,
+                'rating' => $rating,
+                'meta' => $meta,
+                'url' => $url,
+                'poster' => tmdb_img($posterSource, 'w185'),
+                'fetch_content' => (($item['_import_status'] ?? '') === 'full') ? '0' : '1',
+                'media' => $media,
+            ];
+        }
+
+        return $this->jsonResponse([
+            'ok' => true,
+            'query' => $query,
+            'results' => array_slice($results, 0, 6),
+            'search_url' => search_url(['q' => $query]),
+        ]);
+    }
+
+    private function jsonResponse(array $payload): string
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        return (string)json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+
     public function comingThisYear(array $params): string
     {
         $year = (int)(new \DateTimeImmutable('today'))->format('Y');
@@ -174,14 +337,21 @@ final class MediaController
 
         $this->prefetchForSearch($query, $type, $page, $perPage);
 
-        $items = [];
-        if ($type === 'all' || $type === 'movie') $items = array_merge($items, $this->repo->movies->all());
-        if ($type === 'all' || $type === 'tv') $items = array_merge($items, $this->repo->tv->all());
-        if ($type === 'person') $items = array_merge($items, $this->repo->people->all());
-
-        $items = $this->filterItems($items, $query, $genre, $rating, $year);
-        $items = $this->sortItems($items, $sort);
-        $pagination = $this->paginate($items, $page, $perPage);
+        $buckets = match ($type) {
+            'movie' => ['movies'],
+            'tv' => ['tv'],
+            'person' => ['people'],
+            default => ['movies', 'tv'],
+        };
+        $pagination = SqliteStore::queryBuckets($buckets, [
+            'query' => $query,
+            'genre' => $genre,
+            'rating' => $rating,
+            'year' => $year,
+            'sort' => $sort,
+            'page' => $page,
+            'per_page' => $perPage,
+        ]);
 
         return View::render('pages/search', [
             'title' => $query ? 'Search: ' . $query : 'Discover Movies and TV',
@@ -216,10 +386,15 @@ final class MediaController
 
         $this->prefetchForListing($type, $page, $perPage);
 
-        $items = $type === 'movie' ? $this->repo->movies->all() : $this->repo->tv->all();
-        $items = $this->filterItems($items, '', $genre, $rating, $year);
-        $items = $this->sortItems($items, $sort);
-        $pagination = $this->paginate($items, $page, $perPage);
+        $store = $type === 'movie' ? $this->repo->movies : $this->repo->tv;
+        $pagination = $store->paginated([
+            'genre' => $genre,
+            'rating' => $rating,
+            'year' => $year,
+            'sort' => $sort,
+            'page' => $page,
+            'per_page' => $perPage,
+        ]);
 
         return View::render('pages/listing', [
             'title' => $type === 'movie' ? 'All Movies' : 'All TV Shows',
@@ -305,7 +480,7 @@ final class MediaController
                 $this->importer->prefetchResults($tv['results'] ?? [], 'tv', 20);
             }
         } catch (\Throwable) {
-            // Keep the page working from existing local JSON if TMDB is unavailable.
+            // Keep the page working from existing local SQLite data if TMDB is unavailable.
         }
     }
 
@@ -337,7 +512,7 @@ final class MediaController
         try {
             $this->importer->prefetchPopular($type, $page, min(20, $perPage));
         } catch (\Throwable) {
-            // Listing pages still work from existing local JSON if TMDB is unavailable.
+            // Listing pages still work from existing local SQLite data if TMDB is unavailable.
         }
     }
 
@@ -350,7 +525,7 @@ final class MediaController
             if ($type !== 'movie' && $type !== 'person') $this->importer->prefetchSearch($query, 'tv', $page, $limit);
             if ($type === 'person') $this->importer->prefetchSearch($query, 'person', $page, $limit);
         } catch (\Throwable) {
-            // Search falls back to existing local JSON if TMDB is unavailable.
+            // Search falls back to existing local SQLite data if TMDB is unavailable.
         }
     }
 
@@ -359,6 +534,7 @@ final class MediaController
         $currentId = (string)($current['id'] ?? '');
         $currentTmdbId = (string)($current['tmdb_id'] ?? '');
         $currentSlug = (string)($current['slug'] ?? '');
+        $currentTitle = (string)($current['title'] ?? $current['name'] ?? '');
         $currentGenres = array_map('strtolower', $current['genres'] ?? []);
         $items = $type === 'movie' ? $this->repo->movies->all() : $this->repo->tv->all();
 
@@ -372,24 +548,85 @@ final class MediaController
                 continue;
             }
 
+            $itemTitle = (string)($item['title'] ?? $item['name'] ?? '');
+            $titleScore = $this->relatedTitleScore($currentTitle, $itemTitle);
+
             $itemGenres = array_map('strtolower', $item['genres'] ?? []);
             $sharedGenres = count(array_intersect($currentGenres, $itemGenres));
-            $score = ($sharedGenres * 10) + ((float)($item['vote_average'] ?? 0));
-            if ($sharedGenres === 0 && !empty($currentGenres)) {
-                $score = (float)($item['vote_average'] ?? 0);
-            }
+            $genreScore = $sharedGenres * 10;
+            $ratingScore = (float)($item['vote_average'] ?? 0);
 
-            $item['_related_score'] = $score;
+            // Sort priority is deliberate: similar titles/franchises first, then genre matches, then quality/date.
+            $item['_related_title_score'] = $titleScore;
+            $item['_related_genre_score'] = $genreScore;
+            $item['_related_score'] = ($titleScore * 1000) + ($genreScore * 100) + $ratingScore;
             $scored[] = $item;
         }
 
         usort($scored, static function (array $a, array $b): int {
+            $title = ((float)($b['_related_title_score'] ?? 0)) <=> ((float)($a['_related_title_score'] ?? 0));
+            if ($title !== 0) return $title;
+
+            $genre = ((float)($b['_related_genre_score'] ?? 0)) <=> ((float)($a['_related_genre_score'] ?? 0));
+            if ($genre !== 0) return $genre;
+
             $score = ((float)($b['_related_score'] ?? 0)) <=> ((float)($a['_related_score'] ?? 0));
             if ($score !== 0) return $score;
+
             return strcmp((string)($b['release_date'] ?? ''), (string)($a['release_date'] ?? ''));
         });
 
         return array_slice($scored, 0, $limit);
+    }
+
+    private function relatedTitleScore(string $currentTitle, string $itemTitle): float
+    {
+        $current = $this->normaliseRelatedTitle($currentTitle);
+        $item = $this->normaliseRelatedTitle($itemTitle);
+        if ($current === '' || $item === '') return 0.0;
+
+        $score = 0.0;
+        if ($current === $item) $score += 100.0;
+        if (str_contains($item, $current) || str_contains($current, $item)) $score += 45.0;
+
+        $currentTokens = $this->relatedTitleTokens($current);
+        $itemTokens = $this->relatedTitleTokens($item);
+        if (!$currentTokens || !$itemTokens) return $score;
+
+        $shared = array_values(array_intersect($currentTokens, $itemTokens));
+        $sharedCount = count($shared);
+        if ($sharedCount > 0) {
+            $score += $sharedCount * 18.0;
+            $score += ($sharedCount / max(1, count($currentTokens))) * 25.0;
+            $score += ($sharedCount / max(1, count($itemTokens))) * 10.0;
+        }
+
+        $firstCurrent = $currentTokens[0] ?? '';
+        $firstItem = $itemTokens[0] ?? '';
+        if ($firstCurrent !== '' && $firstCurrent === $firstItem) $score += 20.0;
+
+        return $score;
+    }
+
+    private function normaliseRelatedTitle(string $title): string
+    {
+        $title = strtolower(trim($title));
+        $title = preg_replace('/\([^)]*\)/', ' ', $title) ?? $title;
+        $title = preg_replace('/[^a-z0-9]+/', ' ', $title) ?? $title;
+        return trim(preg_replace('/\s+/', ' ', $title) ?? $title);
+    }
+
+    private function relatedTitleTokens(string $title): array
+    {
+        $stopWords = ['the' => true, 'a' => true, 'an' => true, 'and' => true, 'or' => true, 'of' => true, 'to' => true, 'in' => true, 'for' => true, 'with' => true, 'on' => true, 'at' => true, 'from' => true, 'part' => true, 'season' => true];
+        $tokens = [];
+        foreach (explode(' ', $title) as $token) {
+            $token = trim($token);
+            if ($token === '' || isset($stopWords[$token])) continue;
+            if (strlen($token) < 3 && !ctype_digit($token)) continue;
+            $tokens[$token] = $token;
+        }
+        return array_values($tokens);
     }
 
     private function filterItems(array $items, string $query = '', string $genre = '', string $rating = '', string $year = ''): array
@@ -455,20 +692,25 @@ final class MediaController
 
     private function availableGenres(?string $type = null): array
     {
-        $items = $type === 'movie' ? $this->repo->movies->all() : ($type === 'tv' ? $this->repo->tv->all() : array_merge($this->repo->movies->all(), $this->repo->tv->all()));
+        $stores = $type === 'movie' ? [$this->repo->movies] : ($type === 'tv' ? [$this->repo->tv] : [$this->repo->movies, $this->repo->tv]);
         $genres = [];
-        foreach ($items as $item) foreach (($item['genres'] ?? []) as $g) if ($g !== '') $genres[$g] = $g;
+        foreach ($stores as $store) {
+            foreach ($store->distinctGenres() as $genre) {
+                $genres[$genre] = $genre;
+            }
+        }
         natcasesort($genres);
         return array_values($genres);
     }
 
     private function availableRatings(?string $type = null): array
     {
-        $items = $type === 'movie' ? $this->repo->movies->all() : ($type === 'tv' ? $this->repo->tv->all() : array_merge($this->repo->movies->all(), $this->repo->tv->all()));
+        $stores = $type === 'movie' ? [$this->repo->movies] : ($type === 'tv' ? [$this->repo->tv] : [$this->repo->movies, $this->repo->tv]);
         $ratings = [];
-        foreach ($items as $item) {
-            $r = (string)($item['age_rating'] ?? 'NR');
-            if ($r !== '') $ratings[$r] = $r;
+        foreach ($stores as $store) {
+            foreach ($store->distinctValues('age_rating') as $rating) {
+                if ($rating !== '') $ratings[$rating] = $rating;
+            }
         }
         natcasesort($ratings);
         return array_values($ratings);
@@ -485,6 +727,20 @@ final class MediaController
         } catch (\Throwable) {
             return null;
         }
+    }
+
+
+    private function fetchingPage(string $type, string $slug, string $message): string
+    {
+        return View::render('pages/fetching-content', [
+            'title' => 'Fetching content | Movie DB',
+            'robots' => 'noindex, follow',
+            'metaDescription' => 'This page is being fetched and saved locally.',
+            'fetchType' => $type,
+            'fetchSlug' => $slug,
+            'fetchFallbackUrl' => url(($type === 'tv' ? 'tv/' : 'movies/') . $slug),
+            'message' => $message,
+        ]);
     }
 
     private function notFound(): string { http_response_code(404); return View::render('pages/404', [

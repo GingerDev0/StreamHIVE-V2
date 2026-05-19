@@ -14,6 +14,12 @@ final class View
         ob_start();
         require $viewFile;
         $content = ob_get_clean();
+
+        // Views often use generic local variable names such as $title while rendering
+        // cards/lists. Restore the original controller data before loading the layout
+        // so page metadata always uses the intended page-level values.
+        extract($data, EXTR_OVERWRITE);
+
         $layoutFile = app_path('app/Views/' . $layout . '.php');
         ob_start();
         require $layoutFile;

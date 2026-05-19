@@ -7,7 +7,7 @@
     <div class="v2-detail-copy">
       <span class="v2-kicker"><i class="fa-solid fa-tv"></i> TV Show</span>
       <h1><?= e($item['title']) ?></h1>
-      <div class="v2-chip-row mb-3"><span><i class="fa-solid fa-calendar"></i> <?= e(format_date($item['release_date'] ?? '')) ?></span><span><i class="fa-solid fa-star"></i> <?= e((string)round((float)($item['vote_average'] ?? 0), 1)) ?></span><span><?= e($item['age_rating'] ?? 'NR') ?></span></div>
+      <div class="v2-chip-row mb-3"><span><i class="fa-solid fa-calendar"></i> <?= e(format_date($item['release_date'] ?? '')) ?></span><?php if (media_runtime($item, 'tv') !== ''): ?><span><i class="fa-regular fa-clock"></i> <?= e(media_runtime($item, 'tv')) ?></span><?php endif; ?><span><i class="fa-solid fa-star"></i> <?= e((string)round((float)($item['vote_average'] ?? 0), 1)) ?></span><span><?= e($item['age_rating'] ?? 'NR') ?></span></div>
       <div class="v2-genre-row mb-3"><?= genre_links($item['genres'] ?? [], 'tv', 0, 'genre-link') ?></div>
       <p class="v2-lead"><?= e($item['overview'] ?? '') ?></p>
       <div class="v2-hero-actions">
@@ -42,7 +42,7 @@
     <div class="v2-section-head compact"><div><span class="v2-section-eyebrow"><i class="fa-solid fa-users"></i> Talent</span><h2>Cast</h2></div></div>
     <div class="row g-3">
     <?php foreach (($item['cast'] ?? []) as $actor): ?>
-      <div class="col-6 col-md-4 col-xl-3"><a class="card media-card v2-person-card text-decoration-none h-100" href="<?= e(actor_url($actor)) ?>"><img class="card-img-top" src="<?= e(tmdb_img($actor['profile_path'] ?? null)) ?>" alt="<?= e($actor['name']) ?>"><div class="card-body"><div class="text-white fw-semibold"><?= e($actor['name']) ?></div><small class="text-white-50"><?= e($actor['character'] ?? '') ?></small></div></a></div>
+      <div class="col-6 col-md-4 col-xl-3"><a class="card media-card v2-person-card text-decoration-none h-100 js-media-link" href="<?= e(actor_url($actor)) ?>" data-fetch-content="1" data-media="<?= media_storage_payload($actor, 'person', actor_url($actor)) ?>"><img class="card-img-top" src="<?= e(tmdb_img($actor['profile_path'] ?? null)) ?>" alt="<?= e($actor['name']) ?>"><div class="card-body"><div class="text-white fw-semibold"><?= e($actor['name']) ?></div><small class="text-white-50"><?= e($actor['character'] ?? '') ?></small></div></a></div>
     <?php endforeach; ?>
     </div>
   </section>

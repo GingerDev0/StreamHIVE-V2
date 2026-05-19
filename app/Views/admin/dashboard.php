@@ -61,20 +61,20 @@
   </div>
   <div class="col-xl-4">
     <section class="admin-panel h-100">
-      <div class="admin-section-head"><div><span class="admin-kicker"><i class="fa-solid fa-database"></i> Local JSON</span><h2>Storage Health</h2></div></div>
+      <div class="admin-section-head"><div><span class="admin-kicker"><i class="fa-solid fa-database"></i> SQLite</span><h2>Storage Health</h2></div></div>
       <div class="d-flex flex-column gap-3">
         <?php foreach ($storageStats as $name => $stat): ?>
           <div class="admin-storage-card">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <strong><?= e(ucfirst($name)) ?></strong>
-              <span class="admin-muted small"><?= e((string)$stat['rows']) ?> / <?= e((string)$stat['capacity']) ?></span>
+              <span class="admin-muted small"><?= e((string)$stat['rows']) ?> records</span>
             </div>
             <div class="admin-progress"><span style="width: <?= e((string)$stat['percent']) ?>%"></span></div>
-            <div class="admin-muted small mt-2"><?= e((string)$stat['files']) ?> shard file<?= ((int)$stat['files'] === 1) ? '' : 's' ?></div>
+            <div class="admin-muted small mt-2"><?= e(format_bytes((int)($stat['size_bytes'] ?? 0))) ?> SQLite database</div>
           </div>
         <?php endforeach; ?>
       </div>
-      <div class="admin-note mt-3"><i class="fa-solid fa-circle-info me-2"></i>Each JSON shard still caps at 100 entries.</div>
+      <div class="admin-note mt-3"><i class="fa-solid fa-circle-info me-2"></i>SQLite is now the primary local database. Existing JSON shards are imported automatically the first time the app starts.</div>
     </section>
   </div>
 </div>

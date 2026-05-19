@@ -9,13 +9,6 @@ use App\Core\Config;
 final class TmdbClient
 {
     private string $base = 'https://api.themoviedb.org/3';
-    private string $cacheDir;
-
-    public function __construct()
-    {
-        $this->cacheDir = storage_path('cache');
-        if (!is_dir($this->cacheDir)) mkdir($this->cacheDir, 0775, true);
-    }
 
     public function trending(string $type, string $window = 'week'): array { return $this->get("/trending/{$type}/{$window}"); }
     public function recentMovies(): array { return $this->get('/movie/now_playing'); }
@@ -63,10 +56,8 @@ final class TmdbClient
     {
         $query += ['language' => 'en-US'];
         $key = md5($path . '?' . http_build_query($query));
-        $cache = $this->cacheDir . '/' . $key . '.json';
-        if (is_file($cache) && filemtime($cache) > time() - 3600) {
-            return json_decode((string)file_get_contents($cache), true) ?: [];
-        }
+        $cached = $this->cacheGet($key);
+        if ($cached !== null) return $cached;
 
         if ($apiKey = Config::get('TMDB_API_KEY')) $query['api_key'] = $apiKey;
         $url = $this->base . $path . '?' . http_build_query($query);
@@ -86,7 +77,38 @@ final class TmdbClient
         if ($body === false || $status >= 400) {
             throw new \RuntimeException('TMDB request failed: ' . ($error ?: $status));
         }
-        file_put_contents($cache, $body, LOCK_EX);
+        $this->cachePut($key, $body, 3600);
         return json_decode($body, true) ?: [];
+    }
+
+    private function cacheGet(string $key): ?array
+    {
+        try {
+            $pdo = SqliteStore::connection();
+            $stmt = $pdo->prepare('SELECT response FROM tmdb_cache WHERE cache_key = :key AND expires_at > :now LIMIT 1');
+            $stmt->execute(['key' => $key, 'now' => time()]);
+            $body = $stmt->fetchColumn();
+            if (is_string($body) && $body !== '') return json_decode($body, true) ?: [];
+        } catch (\Throwable) {
+            // Cache is optional. If SQLite is unavailable, the main request will surface the error.
+        }
+        return null;
+    }
+
+    private function cachePut(string $key, string $body, int $ttl): void
+    {
+        try {
+            $pdo = SqliteStore::connection();
+            $pdo->prepare('DELETE FROM tmdb_cache WHERE expires_at <= :now')->execute(['now' => time()]);
+            $stmt = $pdo->prepare('INSERT INTO tmdb_cache (cache_key, response, expires_at, created_at) VALUES (:key, :response, :expires, :created) ON CONFLICT(cache_key) DO UPDATE SET response = excluded.response, expires_at = excluded.expires_at, created_at = excluded.created_at');
+            $stmt->execute([
+                'key' => $key,
+                'response' => $body,
+                'expires' => time() + $ttl,
+                'created' => gmdate(DATE_ATOM),
+            ]);
+        } catch (\Throwable) {
+            // Ignore cache-write failures.
+        }
     }
 }

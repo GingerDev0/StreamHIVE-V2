@@ -1,22 +1,48 @@
 <?php require_once app_path('app/Helpers/helpers.php'); ?>
-<aside class="glass rounded-4 p-3 text-white h-100">
-  <h2 class="h4 mb-3"><i class="fa-solid fa-clapperboard me-2 text-warning"></i>More like this</h2>
+<?php $relatedType = ($type ?? 'movie') === 'tv' ? 'tv' : 'movie'; ?>
+<aside class="v2-related-panel h-100">
+  <div class="v2-related-head">
+    <div>
+      <span class="v2-related-eyebrow"><i class="fa-solid fa-layer-group"></i> Recommended</span>
+      <h2>More like this</h2>
+    </div>
+    <?php if (!empty($related)): ?>
+      <span class="v2-related-count"><?= e((string)count($related)) ?></span>
+    <?php endif; ?>
+  </div>
+
   <?php if (empty($related)): ?>
-    <p class="small text-white-50 mb-0">Import more <?= e(($type ?? 'movie') === 'tv' ? 'TV shows' : 'movies') ?> to build recommendations.</p>
+    <div class="v2-related-empty">
+      <i class="fa-solid fa-clapperboard"></i>
+      <p>Import more <?= e($relatedType === 'tv' ? 'TV shows' : 'movies') ?> to build recommendations.</p>
+    </div>
   <?php else: ?>
-    <div class="d-flex flex-column gap-3">
-      <?php foreach ($related as $rel): ?>
+    <div class="v2-related-list">
+      <?php foreach ($related as $index => $rel): ?>
         <?php
-          $relType = $type ?? ($rel['media_type'] ?? 'movie');
-          $relLink = $relType === 'tv' ? url('tv/' . ($rel['slug'] ?? slugify($rel['title'] ?? 'item'))) : url('movies/' . ($rel['slug'] ?? slugify($rel['title'] ?? 'item')));
+          $relType = $relatedType;
+          $relTitle = $rel['title'] ?? ($rel['name'] ?? 'Untitled');
+          $relLink = $relType === 'tv'
+            ? url('tv/' . ($rel['slug'] ?? slugify($relTitle)))
+            : url('movies/' . ($rel['slug'] ?? slugify($relTitle)));
+          $relRating = round((float)($rel['vote_average'] ?? 0), 1);
+          $relYear = format_year((string)($rel['release_date'] ?? ($rel['first_air_date'] ?? '')));
         ?>
-        <a class="d-flex gap-3 text-decoration-none align-items-start" href="<?= e($relLink) ?>">
-          <img class="rounded-3 flex-shrink-0" src="<?= e(tmdb_img($rel['poster_path'] ?? null, 'w185')) ?>" alt="<?= e($rel['title'] ?? 'Poster') ?>" style="width:72px;aspect-ratio:2/3;object-fit:cover;">
-          <span class="d-block">
-            <span class="d-block text-white fw-semibold lh-sm"><?= e($rel['title'] ?? 'Untitled') ?></span>
-            <span class="d-block small text-white-50 mt-1"><?= e(format_year((string)($rel['release_date'] ?? ''))) ?><?= !empty($rel['age_rating']) ? ' · ' . e((string)$rel['age_rating']) : '' ?></span>
-            <span class="d-block small text-warning mt-1"><i class="fa-solid fa-star"></i> <?= e((string)round((float)($rel['vote_average'] ?? 0), 1)) ?></span>
+        <a class="v2-related-item text-decoration-none js-media-link" href="<?= e($relLink) ?>" data-fetch-content="1" data-media="<?= media_storage_payload($rel, $relType, $relLink) ?>">
+          <span class="v2-related-rank"><?= e(str_pad((string)($index + 1), 2, '0', STR_PAD_LEFT)) ?></span>
+          <span class="v2-related-poster-wrap">
+            <img class="v2-related-poster" src="<?= e(tmdb_img($rel['poster_path'] ?? null, 'w185')) ?>" alt="<?= e($relTitle) ?> poster" loading="lazy">
+            <span class="v2-related-play"><i class="fa-solid fa-play"></i></span>
           </span>
+          <span class="v2-related-copy">
+            <span class="v2-related-title"><?= e($relTitle) ?></span>
+            <span class="v2-related-meta">
+              <?php if ($relYear !== ''): ?><span><?= e($relYear) ?></span><?php endif; ?>
+              <?php if (!empty($rel['age_rating'])): ?><span><?= e((string)$rel['age_rating']) ?></span><?php endif; ?>
+            </span>
+            <span class="v2-related-score"><i class="fa-solid fa-star"></i> <?= e((string)$relRating) ?></span>
+          </span>
+          <span class="v2-related-arrow"><i class="fa-solid fa-chevron-right"></i></span>
         </a>
       <?php endforeach; ?>
     </div>

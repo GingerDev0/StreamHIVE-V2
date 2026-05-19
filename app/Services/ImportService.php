@@ -34,8 +34,13 @@ final class ImportService
         $data = $this->tmdb->movie($id);
         $record = $this->normalizeMedia($data, 'movie');
         $record['import_status'] = 'full';
-        $this->repo->movies->upsert($record);
-        $this->importCast($data['credits']['cast'] ?? [], $record);
+        $people = $this->castRecordsToUpsert($data['credits']['cast'] ?? [], $record);
+
+        SqliteStore::transaction(function () use ($record, $people): void {
+            $this->repo->movies->upsert($record);
+            if ($people) $this->repo->people->upsertMany($people);
+        });
+
         return $record;
     }
 
@@ -44,8 +49,13 @@ final class ImportService
         $data = $this->tmdb->tv($id);
         $record = $this->normalizeMedia($data, 'tv');
         $record['import_status'] = 'full';
-        $this->repo->tv->upsert($record);
-        $this->importCast($data['credits']['cast'] ?? [], $record);
+        $people = $this->castRecordsToUpsert($data['credits']['cast'] ?? [], $record);
+
+        SqliteStore::transaction(function () use ($record, $people): void {
+            $this->repo->tv->upsert($record);
+            if ($people) $this->repo->people->upsertMany($people);
+        });
+
         return $record;
     }
 
@@ -53,8 +63,14 @@ final class ImportService
     {
         $data = $this->tmdb->person($id);
         $person = $this->normalizePerson($data);
-        $this->syncPersonCreditMedia($person);
-        $this->repo->people->upsert($person);
+        $media = $this->syncPersonCreditMedia($person);
+
+        SqliteStore::transaction(function () use ($person, $media): void {
+            if (!empty($media['movies'])) $this->repo->movies->upsertMany($media['movies']);
+            if (!empty($media['tv'])) $this->repo->tv->upsertMany($media['tv']);
+            $this->repo->people->upsert($person);
+        });
+
         return $person;
     }
 
@@ -62,17 +78,25 @@ final class ImportService
 
     public function prefetchResults(array $results, string $type, int $limit = 20): int
     {
-        $count = 0;
-        foreach (array_slice($results, 0, max(0, $limit)) as $result) {
-            if (empty($result['id'])) continue;
+        $results = array_values(array_filter(array_slice($results, 0, max(0, $limit)), static fn(array $row): bool => !empty($row['id'])));
+        if (!$results) return 0;
+
+        $store = $type === 'person' ? $this->repo->people : ($type === 'movie' ? $this->repo->movies : $this->repo->tv);
+        $fullIds = $store->idsWithStatus(array_map(static fn(array $row): string => (string)$row['id'], $results), 'full');
+
+        $records = [];
+        foreach ($results as $result) {
+            if (isset($fullIds[(string)$result['id']])) continue;
             try {
-                $this->prefetchResult($result, $type);
-                $count++;
+                $records[] = $type === 'person'
+                    ? $this->normalizeLightPerson($result)
+                    : $this->normalizeLightMedia($result, $type);
             } catch (\Throwable) {
                 continue;
             }
         }
-        return $count;
+
+        return $records ? $store->upsertMany($records) : 0;
     }
 
     public function prefetchResult(array $result, string $type): ?array
@@ -172,24 +196,33 @@ final class ImportService
         return $results[0] ?? null;
     }
 
-    private function importCast(array $cast, array $media): void
+    private function castRecordsToUpsert(array $cast, array $media): array
     {
+        $records = [];
         foreach (array_slice($cast, 0, 20) as $member) {
             if (empty($member['id'])) continue;
+
             $person = $this->repo->people->find((int)$member['id']);
             if (!$person) {
                 try { $person = $this->normalizePerson($this->tmdb->person((int)$member['id'])); }
                 catch (\Throwable) { continue; }
             }
+
             $person['credits'] = $person['credits'] ?? [];
             $key = $media['media_type'] . ':' . $media['id'];
             $person['credits'][$key] = [
-                'id' => $media['id'], 'media_type' => $media['media_type'], 'title' => $media['title'], 'slug' => $media['slug'],
-                'poster_path' => $media['poster_path'] ?? null, 'character' => $member['character'] ?? null,
+                'id' => $media['id'],
+                'media_type' => $media['media_type'],
+                'title' => $media['title'],
+                'slug' => $media['slug'],
+                'poster_path' => $media['poster_path'] ?? null,
+                'character' => $member['character'] ?? null,
                 'release_date' => $media['release_date'] ?? null,
             ];
-            $this->repo->people->upsert($person);
+            $person['known_for'] = array_values($person['credits']);
+            $records[] = $person;
         }
+        return $records;
     }
 
 
@@ -251,6 +284,8 @@ final class ImportService
             'release_date' => $date,
             'vote_average' => $data['vote_average'] ?? null,
             'age_rating' => 'NR',
+            'runtime' => null,
+            'episode_run_time' => [],
             'genres' => $genres,
             'cast' => [],
             'seasons' => [],
@@ -293,6 +328,8 @@ final class ImportService
             'poster_path' => $data['poster_path'] ?? null, 'backdrop_path' => $data['backdrop_path'] ?? null,
             'release_date' => $date, 'vote_average' => $data['vote_average'] ?? null,
             'age_rating' => $this->ageRating($data, $type),
+            'runtime' => $type === 'movie' ? ($data['runtime'] ?? null) : null,
+            'episode_run_time' => $type === 'tv' ? array_values(array_filter(array_map('intval', $data['episode_run_time'] ?? []), static fn(int $runtime): bool => $runtime > 0)) : [],
             'genres' => array_values(array_filter(array_map(fn($g) => $g['name'] ?? '', $data['genres'] ?? []))),
             'cast' => array_map(fn($c) => ['id'=>$c['id']??null,'name'=>$c['name']??'','slug'=>$this->uniqueSlug((string)($c['name']??''), 'person', (int)($c['id']??0)),'character'=>$c['character']??'','profile_path'=>$c['profile_path']??null], array_slice($data['credits']['cast'] ?? [], 0, 16)),
             'seasons' => $type === 'tv' ? ($data['seasons'] ?? []) : [],
@@ -303,33 +340,34 @@ final class ImportService
     private function uniqueSlug(string $title, string $type, int $id = 0): string
     {
         $base = slugify($title);
+        if ($base === '') $base = $type . ($id > 0 ? '-' . $id : '');
+
         $store = $type === 'person' ? $this->repo->people : ($type === 'tv' ? $this->repo->tv : $this->repo->movies);
 
         if ($id > 0) {
-            $existing = $store->find($id);
-            if (!empty($existing['slug'])) return (string)$existing['slug'];
+            $existingSlug = $store->slugForId($id);
+            if ($existingSlug) return $existingSlug;
         }
 
-        $used = [];
-        foreach ($store->all() as $row) {
-            if ($id > 0 && (string)($row['id'] ?? '') === (string)$id) continue;
-            $slug = (string)($row['slug'] ?? '');
-            if ($slug !== '') $used[$slug] = true;
-        }
-
-        if (!isset($used[$base])) return $base;
+        if (!$store->slugExists($base, $id > 0 ? $id : null)) return $base;
 
         $suffix = 2;
         do {
             $candidate = $base . '-' . $suffix;
             $suffix++;
-        } while (isset($used[$candidate]));
+        } while ($store->slugExists($candidate, $id > 0 ? $id : null));
 
         return $candidate;
     }
 
-    private function syncPersonCreditMedia(array &$person): void
+    /**
+     * Make sure actor credits have local slugs and prepare lightweight media records.
+     * Returns records for one batched SQLite transaction instead of writing each credit one by one.
+     */
+    private function syncPersonCreditMedia(array &$person): array
     {
+        $media = ['movies' => [], 'tv' => []];
+
         foreach ($person['credits'] ?? [] as $key => $credit) {
             $type = (string)($credit['media_type'] ?? '');
             if (!in_array($type, ['movie', 'tv'], true)) continue;
@@ -338,9 +376,9 @@ final class ImportService
             if ($id <= 0) continue;
 
             $store = $type === 'movie' ? $this->repo->movies : $this->repo->tv;
-            $existing = $store->find($id);
-            if ($existing) {
-                $person['credits'][$key]['slug'] = (string)($existing['slug'] ?? $credit['slug'] ?? slugify((string)($credit['title'] ?? 'item')));
+            $existingSlug = $store->slugForId($id);
+            if ($existingSlug) {
+                $person['credits'][$key]['slug'] = $existingSlug;
                 continue;
             }
 
@@ -358,16 +396,19 @@ final class ImportService
                 'release_date' => $credit['release_date'] ?? null,
                 'vote_average' => null,
                 'age_rating' => 'NR',
+                'runtime' => null,
+                'episode_run_time' => [],
                 'genres' => [],
                 'cast' => [],
                 'seasons' => [],
                 'import_status' => 'prefetched',
             ];
-            $store->upsert($record);
+            $media[$type === 'movie' ? 'movies' : 'tv'][] = $record;
             $person['credits'][$key]['slug'] = $record['slug'];
         }
 
         $person['known_for'] = array_values($person['credits'] ?? []);
+        return $media;
     }
 
 

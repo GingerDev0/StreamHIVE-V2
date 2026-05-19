@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Services\JsonShardStore;
+use App\Services\SqliteStore;
 
 final class Repository
 {
-    public JsonShardStore $movies;
-    public JsonShardStore $tv;
-    public JsonShardStore $people;
+    public SqliteStore $movies;
+    public SqliteStore $tv;
+    public SqliteStore $people;
 
     public function __construct()
     {
-        $this->movies = new JsonShardStore(storage_path('movies'));
-        $this->tv = new JsonShardStore(storage_path('tv'));
-        $this->people = new JsonShardStore(storage_path('people'));
+        $this->movies = new SqliteStore('movies');
+        $this->tv = new SqliteStore('tv');
+        $this->people = new SqliteStore('people');
     }
 
     public function bySlug(string $type, string $slug): ?array
@@ -24,7 +24,7 @@ final class Repository
         return $this->store($type)->findBy('slug', $slug);
     }
 
-    public function store(string $type): JsonShardStore
+    public function store(string $type): SqliteStore
     {
         return match ($type) {
             'movie', 'movies' => $this->movies,

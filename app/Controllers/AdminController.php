@@ -8,6 +8,7 @@ use App\Core\Config;
 use App\Core\View;
 use App\Models\Repository;
 use App\Services\ImportService;
+use App\Services\SqliteStore;
 
 final class AdminController
 {
@@ -152,20 +153,17 @@ final class AdminController
 
     private function storageStats(): array
     {
+        $db = SqliteStore::stats();
         $stats = [];
         foreach (['movies', 'tv', 'people'] as $bucket) {
-            $dir = storage_path($bucket);
-            $files = glob($dir . '/*.json') ?: [];
-            $rows = 0;
-            foreach ($files as $file) {
-                $json = json_decode((string)file_get_contents($file), true);
-                $rows += is_array($json) ? count($json) : 0;
-            }
+            $rows = (int)($db['buckets'][$bucket] ?? 0);
             $stats[$bucket] = [
-                'files' => count($files),
+                'files' => 1,
                 'rows' => $rows,
-                'capacity' => max(100, count($files) * 100),
-                'percent' => count($files) > 0 ? min(100, (int)round(($rows / (count($files) * 100)) * 100)) : 0,
+                'capacity' => max(1, $rows),
+                'percent' => $rows > 0 ? 100 : 0,
+                'database_path' => $db['path'] ?? storage_path('database.sqlite'),
+                'size_bytes' => $db['size_bytes'] ?? 0,
             ];
         }
         return $stats;

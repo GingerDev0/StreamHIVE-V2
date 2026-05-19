@@ -54,14 +54,16 @@ $robots = (string)($robots ?? 'index, follow');
         <li class="nav-item"><a class="nav-link" href="/"><i class="fa-solid fa-house"></i> Home</a></li>
         <li class="nav-item"><a class="nav-link" href="/movies"><i class="fa-solid fa-film"></i> Movies</a></li>
         <li class="nav-item"><a class="nav-link" href="/tv"><i class="fa-solid fa-tv"></i> TV Shows</a></li>
+        <li class="nav-item"><a class="nav-link" href="/actors"><i class="fa-solid fa-user-group"></i> Actors</a></li>
         <li class="nav-item"><a class="nav-link" href="/s"><i class="fa-solid fa-sliders"></i> Discover</a></li>
         <li class="nav-item"><a class="nav-link" href="/coming-this-year"><i class="fa-solid fa-calendar-days"></i> Coming This Year</a></li>
         <li class="nav-item"><a class="nav-link" href="/profile"><i class="fa-solid fa-user-astronaut"></i> My Profile</a></li>
       </ul>
-      <form class="v2-nav-search" action="/s" method="get" role="search">
+      <form class="v2-nav-search js-live-search-form" action="/s" method="get" role="search" autocomplete="off">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input name="q" placeholder="Search the universe..." autocomplete="off">
+        <input name="q" class="js-live-search-input" placeholder="Search the universe..." autocomplete="off" aria-label="Search movies, TV shows and actors" aria-expanded="false" aria-controls="navLiveSearchResults">
         <button type="submit">Go</button>
+        <div class="v2-live-search-results js-live-search-results" id="navLiveSearchResults" role="listbox" aria-label="Live search results"></div>
       </form>
       <a class="v2-admin-link" href="/admin?token=change-this-token" title="Admin"><i class="fa-solid fa-gear"></i></a>
     </div>
@@ -74,6 +76,19 @@ $robots = (string)($robots ?? 'index, follow');
     <span>TMDB data powers imports. This product is not endorsed or certified by TMDB.</span>
   </div>
 </footer>
+
+<div class="modal fade fetch-modal" id="contentFetchModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content fetch-modal-content">
+      <div class="modal-body text-center p-4 p-lg-5">
+        <div class="fetch-spinner mx-auto mb-4"><i class="fa-solid fa-cloud-arrow-down"></i></div>
+        <h2 class="h4 mb-2">Fetching content</h2>
+        <p class="text-white-50 mb-0" data-fetch-modal-message>This title is being added now. Please wait...</p>
+        <div class="fetch-progress mt-4" aria-hidden="true"><span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="<?= asset('js/app.js') ?>"></script>

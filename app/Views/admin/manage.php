@@ -9,7 +9,7 @@ $base = '/admin/manage/' . $type . '?token=' . rawurlencode($token);
     <div class="col-lg-8">
       <span class="admin-kicker"><i class="fa-solid fa-table-list"></i> Library manager</span>
       <h1 class="admin-title">Manage <?= e($typeLabel) ?></h1>
-      <p class="admin-lead mb-0">Search, sort, preview, open, and delete local JSON records.</p>
+      <p class="admin-lead mb-0">Search, sort, preview, open, and delete local SQLite records.</p>
     </div>
     <div class="col-lg-4 text-lg-end">
       <a class="btn btn-warning" href="/admin/import?token=<?= e($token) ?>"><i class="fa-solid fa-plus me-2"></i>Import</a>
@@ -41,6 +41,8 @@ $base = '/admin/manage/' . $type . '?token=' . rawurlencode($token);
   <div><strong><?= e((string)$total) ?></strong> records found</div>
   <div class="admin-muted">Page <?= e((string)$page) ?> of <?= e((string)$pages) ?></div>
 </div>
+
+<?= View::partial('partials/pagination', ['page' => $page, 'pages' => $pages, 'total' => $total, 'perPage' => $perPage ?? 24, 'itemLabel' => $typeLabel, 'position' => 'top']) ?>
 
 <div class="admin-media-grid">
   <?php foreach ($items as $item): ?>

@@ -73,6 +73,8 @@ $profile = tmdb_img($actor['profile_path'] ?? null, 'w500');
               $prettyDate = format_date($date);
               $isFuture = is_future_date($date);
               $href = media_url($credit);
+              $creditType = (($credit['media_type'] ?? '') === 'tv') ? 'tv' : 'movie';
+              $creditMedia = media_storage_payload($credit, $creditType, $href);
               $character = trim((string)($credit['character'] ?? ''));
               $poster = tmdb_img($credit['poster_path'] ?? null, 'w500');
           ?>
@@ -83,7 +85,7 @@ $profile = tmdb_img($actor['profile_path'] ?? null, 'w500');
                   <span class="actor-credit-production-badge"><i class="fa-solid fa-clock"></i> Coming soon</span>
                 </div>
               <?php else: ?>
-                <a href="<?= e($href) ?>" class="actor-credit-poster" aria-label="Open <?= e($title) ?>">
+                <a href="<?= e($href) ?>" class="actor-credit-poster js-media-link" aria-label="Open <?= e($title) ?>" data-fetch-content="1" data-media="<?= $creditMedia ?>">
                   <img src="<?= e($poster) ?>" alt="<?= e($title) ?> poster" loading="lazy">
                   <span class="actor-credit-play"><i class="fa-solid fa-play"></i></span>
                 </a>
@@ -92,7 +94,7 @@ $profile = tmdb_img($actor['profile_path'] ?? null, 'w500');
                 <?php if ($isFuture): ?>
                   <span class="actor-credit-title actor-credit-title-static"><?= e($title) ?></span>
                 <?php else: ?>
-                  <a href="<?= e($href) ?>" class="actor-credit-title"><?= e($title) ?></a>
+                  <a href="<?= e($href) ?>" class="actor-credit-title js-media-link" data-fetch-content="1" data-media="<?= $creditMedia ?>"><?= e($title) ?></a>
                 <?php endif; ?>
                 <?php if ($prettyDate !== ''): ?><span class="actor-credit-date"><i class="fa-solid fa-calendar-days"></i> <?= e($prettyDate) ?></span><?php endif; ?>
                 <?php if ($character !== ''): ?><span class="actor-credit-character">as <?= e($character) ?></span><?php endif; ?>

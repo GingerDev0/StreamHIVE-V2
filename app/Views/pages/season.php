@@ -25,7 +25,7 @@ $seasonName = $season['name'] ?? ('Season ' . $seasonNumber);
       <?php foreach ($episodes as $ep): ?>
         <?php $episodeNumber = (int)($ep['episode_number'] ?? 0); if ($episodeNumber < 1) continue; $epUrl = url('tv/'.$show['slug'].'/s'.str_pad((string)$seasonNumber,2,'0',STR_PAD_LEFT).'/e'.str_pad((string)$episodeNumber,2,'0',STR_PAD_LEFT)); $epTitle = ($show['title'] ?? 'Show') . ' - S' . str_pad((string)$seasonNumber,2,'0',STR_PAD_LEFT) . 'E' . str_pad((string)$episodeNumber,2,'0',STR_PAD_LEFT) . ' - ' . ($ep['name'] ?? ('Episode '.$episodeNumber)); ?>
         <div class="col-md-6">
-          <a class="season-episode-card text-decoration-none js-media-link" href="<?= e($epUrl) ?>" data-media="<?= media_storage_payload($show, 'episode', $epUrl, $epTitle, 'Episode · Season '.(string)$seasonNumber.' · Episode '.(string)$episodeNumber, tmdb_img($ep['still_path'] ?? ($show['poster_path'] ?? null), 'w500')) ?>">
+          <a class="season-episode-card text-decoration-none js-media-link" href="<?= e($epUrl) ?>" data-fetch-content="<?= (($show['import_status'] ?? '') === 'full') ? '0' : '1' ?>" data-media="<?= media_storage_payload($show, 'episode', $epUrl, $epTitle, 'Episode · Season '.(string)$seasonNumber.' · Episode '.(string)$episodeNumber, tmdb_img($ep['still_path'] ?? ($show['poster_path'] ?? null), 'w500')) ?>">
             <div class="episode-still-wrap">
               <img src="<?= e(tmdb_img($ep['still_path'] ?? null, 'w500')) ?>" alt="<?= e($ep['name'] ?? ('Episode '.$episodeNumber)) ?> still">
               <span class="episode-play"><i class="fa-solid fa-play"></i></span>

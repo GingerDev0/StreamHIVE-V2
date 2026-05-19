@@ -6,6 +6,8 @@ $totalPages = max(1, (int)($pages ?? 1));
 $totalItems = max(0, (int)($total ?? 0));
 $perPage = max(1, (int)($perPage ?? 24));
 $itemLabel = trim((string)($itemLabel ?? 'items'));
+$position = (string)($position ?? 'bottom');
+$navClass = $position === 'top' ? 'pager-shell pager-shell-top mt-3 mb-4' : 'pager-shell pager-shell-bottom mt-5';
 $maxVisible = 5;
 
 if ($totalItems < 1 && $totalPages <= 1) {
@@ -26,7 +28,7 @@ $makeUrl = static function (int $targetPage): string {
     return '?' . http_build_query($query);
 };
 ?>
-<nav class="pager-shell mt-5" aria-label="Pagination">
+<nav class="<?= e($navClass) ?>" aria-label="Pagination">
   <div class="pager-bar d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
     <div class="pager-showing">
       <span>Showing</span>

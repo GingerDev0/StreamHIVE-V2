@@ -1,0 +1,39 @@
+# Local environment / secrets
+.env
+.env.local
+*.local
+
+# SQLite runtime databases
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db-wal
+*.db-shm
+*.db-journal
+storage/database.sqlite
+storage/database.sqlite-*
+database.sqlite
+database.sqlite-*
+
+# Runtime/cache data
+storage/cache/*
+storage/indexes/*
+storage/movies/*
+storage/tv/*
+storage/people/*
+!storage/.gitkeep
+!storage/cache/.gitkeep
+!storage/indexes/.gitkeep
+!storage/movies/.gitkeep
+!storage/tv/.gitkeep
+!storage/people/.gitkeep
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

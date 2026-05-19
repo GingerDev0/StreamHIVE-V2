@@ -46,6 +46,35 @@ function media_url(array $item): string {
 function actor_url(array $person): string { return url('actors/' . $person['slug']); }
 
 
+function multiembed_player_url(array $item, string $type = 'movie', ?int $season = null, ?int $episode = null): string {
+    $tmdbId = (int)($item['tmdb_id'] ?? $item['id'] ?? 0);
+    $imdbId = trim((string)($item['imdb_id'] ?? ''));
+
+    // Prefer TMDB IDs because the local database always stores them, while IMDb IDs can be missing,
+    // especially for TV shows/episodes. Fall back to IMDb only when TMDB is unavailable.
+    if ($tmdbId > 0) {
+        $params = [
+            'video_id' => (string)$tmdbId,
+            'tmdb' => '1',
+        ];
+    } elseif ($imdbId !== '') {
+        $params = ['video_id' => $imdbId];
+    } else {
+        return '';
+    }
+
+    if ($type === 'episode') {
+        $season = max(1, (int)$season);
+        $episode = max(1, (int)$episode);
+        $params['s'] = (string)$season;
+        $params['e'] = (string)$episode;
+    }
+
+    return 'https://multiembed.mov/?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+}
+
+
+
 function media_release_date(array $item): string {
     return trim((string)($item['release_date'] ?? $item['first_air_date'] ?? $item['air_date'] ?? ''));
 }
@@ -79,6 +108,50 @@ function format_date(?string $date): string {
     }
     return $day . $suffix . ' ' . $dt->format('F Y');
 }
+
+
+function format_runtime(int|float|string|array|null $minutes): string {
+    if (is_array($minutes)) {
+        $minutes = array_values(array_filter(array_map('intval', $minutes), static fn(int $value): bool => $value > 0))[0] ?? 0;
+    }
+
+    $minutes = (int)$minutes;
+    if ($minutes <= 0) return '';
+
+    $hours = intdiv($minutes, 60);
+    $mins = $minutes % 60;
+    $parts = [];
+
+    if ($hours > 0) {
+        $parts[] = $hours . ' ' . ($hours === 1 ? 'hour' : 'hours');
+    }
+
+    if ($mins > 0) {
+        $parts[] = $mins . ' ' . ($mins === 1 ? 'min' : 'mins');
+    }
+
+    return implode(' ', $parts);
+}
+
+function media_runtime(array $item, string $type = 'movie'): string {
+    if ($type === 'tv') {
+        return format_runtime($item['episode_run_time'] ?? $item['runtime'] ?? null);
+    }
+
+    return format_runtime($item['runtime'] ?? null);
+}
+
+function format_bytes(int|float $bytes): string {
+    $bytes = max(0, (float)$bytes);
+    $units = ['B', 'KB', 'MB', 'GB'];
+    $i = 0;
+    while ($bytes >= 1024 && $i < count($units) - 1) {
+        $bytes /= 1024;
+        $i++;
+    }
+    return ($i === 0 ? (string)(int)$bytes : number_format($bytes, 1)) . ' ' . $units[$i];
+}
+
 function format_year(?string $date): string {
     $date = trim((string)$date);
     if ($date === '') return '';
@@ -110,12 +183,14 @@ function media_storage_payload(array $item, string $type, ?string $href = null, 
     $date = (string)($item['release_date'] ?? $item['first_air_date'] ?? '');
     $year = format_year($date);
     $slug = (string)($item['slug'] ?? slugify($title));
-    $href = $href ?: ($type === 'tv' ? url('tv/' . $slug) : url('movies/' . $slug));
-    $poster = $posterOverride ?: tmdb_img($item['poster_path'] ?? null);
+    $href = $href ?: ($type === 'person' ? url('actors/' . $slug) : ($type === 'tv' ? url('tv/' . $slug) : url('movies/' . $slug)));
+    $posterSource = $type === 'person' ? ($item['profile_path'] ?? null) : ($item['poster_path'] ?? null);
+    $poster = $posterOverride ?: tmdb_img($posterSource);
+    $typeText = $type === 'person' ? 'Actor' : ($type === 'tv' ? 'TV Show' : 'Movie');
     $meta = $metaOverride ?: trim(implode(' · ', array_filter([
-        $type === 'tv' ? 'TV Show' : 'Movie',
+        $typeText,
         $year,
-        !empty($item['age_rating']) ? (string)$item['age_rating'] : null,
+        !empty($item['age_rating']) && $type !== 'person' ? (string)$item['age_rating'] : null,
     ])));
     $payload = [
         'type' => $type,
@@ -124,7 +199,7 @@ function media_storage_payload(array $item, string $type, ?string $href = null, 
         'title' => $title,
         'url' => $href,
         'poster' => $poster,
-        'backdrop' => tmdb_img($item['backdrop_path'] ?? ($item['poster_path'] ?? null), 'w780'),
+        'backdrop' => tmdb_img($item['backdrop_path'] ?? $posterSource, 'w780'),
         'year' => $year,
         'rating' => round((float)($item['vote_average'] ?? 0), 1),
         'meta' => $meta,
