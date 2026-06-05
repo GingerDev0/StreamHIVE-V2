@@ -205,13 +205,41 @@ function search_url(array $params = []): string {
 function genre_url(string $genre, ?string $type = null): string {
     return search_url(['genre' => $genre, 'type' => $type]);
 }
+function genre_icon(string $genre): string {
+    $key = strtolower(trim($genre));
+    return match ($key) {
+        'action', 'action & adventure', 'adventure' => 'fa-person-running',
+        'animation' => 'fa-wand-magic-sparkles',
+        'comedy' => 'fa-face-laugh',
+        'crime' => 'fa-fingerprint',
+        'documentary' => 'fa-video',
+        'drama' => 'fa-masks-theater',
+        'family', 'kids' => 'fa-people-roof',
+        'fantasy', 'sci-fi & fantasy' => 'fa-hat-wizard',
+        'history' => 'fa-landmark',
+        'horror' => 'fa-ghost',
+        'music', 'musical' => 'fa-music',
+        'mystery' => 'fa-magnifying-glass',
+        'news' => 'fa-newspaper',
+        'reality' => 'fa-camera',
+        'romance' => 'fa-heart',
+        'science fiction', 'sci-fi' => 'fa-rocket',
+        'soap' => 'fa-comment-dots',
+        'talk' => 'fa-microphone',
+        'thriller' => 'fa-bolt',
+        'tv movie' => 'fa-tv',
+        'war', 'war & politics' => 'fa-shield-halved',
+        'western' => 'fa-hat-cowboy',
+        default => 'fa-tag',
+    };
+}
 function genre_links(array $genres, ?string $type = null, int $limit = 0, string $class = 'genre-link'): string {
     $genres = array_values(array_filter(array_map('strval', $genres), static fn($g) => trim($g) !== ''));
     if ($limit > 0) $genres = array_slice($genres, 0, $limit);
     if (!$genres) return '<span class="text-white-50">Genre TBA</span>';
     $links = [];
     foreach ($genres as $genre) {
-        $links[] = '<a class="' . e($class) . '" href="' . e(genre_url($genre, $type)) . '">' . e($genre) . '</a>';
+        $links[] = '<a class="' . e($class) . '" href="' . e(genre_url($genre, $type)) . '"><i class="fa-solid ' . e(genre_icon($genre)) . '" aria-hidden="true"></i><span>' . e($genre) . '</span></a>';
     }
     return implode('<span class="genre-separator">, </span>', $links);
 }

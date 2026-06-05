@@ -3693,3 +3693,17 @@ body.modal-open #contentFetchModal.fetch-modal{
   .v2-collection-splide .splide__slide{width:10rem !important;}
   .v2-collection-splide .home-poster-card{min-height:15rem;}
 }
+
+.genre-link i{
+  flex:0 0 auto;
+  width:1em;
+  font-size:.9em;
+  text-align:center;
+  opacity:.9;
+}
+.genre-link span{
+  min-width:0;
+}
+.genre-link-home i{
+  font-size:.86em;
+}
